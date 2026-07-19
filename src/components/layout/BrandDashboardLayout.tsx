@@ -44,6 +44,7 @@ export default function BrandDashboardLayout() {
         { name: 'по моделям', path: 'models' },
         { name: 'источники', path: 'sources' },
         { name: 'промпты', path: 'prompts' },
+        { name: 'персонажи', path: 'personas' },
         { name: 'сравнение', path: 'compare' },
         { name: 'рынок', path: 'market' }
       ]
@@ -69,7 +70,10 @@ export default function BrandDashboardLayout() {
         { name: 'хронология', path: 'timeline' }
       ]
     },
-    { name: 'интеграции', path: 'integrations', icon: Grid },
+    { name: 'интеграции', path: 'integrations', icon: Grid }
+  ];
+
+  const bottomNavItems = [
     { 
       name: 'настройки', 
       path: 'settings', 
@@ -88,7 +92,7 @@ export default function BrandDashboardLayout() {
   // State for expanded accordions
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => {
     const initialState: Record<string, boolean> = {};
-    navItems.forEach(item => {
+    [...navItems, ...bottomNavItems].forEach(item => {
       if (item.subItems && isItemActive(item.path)) {
         initialState[item.path] = true;
       }
@@ -97,11 +101,14 @@ export default function BrandDashboardLayout() {
   });
 
   const toggleSection = (path: string) => {
-    setExpandedSections(prev => ({ ...prev, [path]: !prev[path] }));
+    setExpandedSections(prev => {
+      if (prev[path]) return {}; // Collapse if already open
+      return { [path]: true }; // Open new, collapse others
+    });
   };
 
   // Helper to get current section name for breadcrumbs
-  const currentSectionName = navItems.find(item => isItemActive(item.path))?.name || 'сводка';
+  const currentSectionName = [...navItems, ...bottomNavItems].find(item => isItemActive(item.path))?.name || 'сводка';
 
   const handleRunProject = async () => {
     setIsRunning(true);
@@ -171,7 +178,7 @@ export default function BrandDashboardLayout() {
         </div>
 
         {/* Navigation Menu */}
-        <div className="flex-1 overflow-y-auto py-4 px-3 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto py-4 px-3 custom-scrollbar flex flex-col justify-between">
           <nav className="space-y-0.5">
             {navItems.map((item) => {
               const active = isItemActive(item.path);
@@ -184,8 +191,10 @@ export default function BrandDashboardLayout() {
                     <button 
                       onClick={() => {
                         toggleSection(item.path);
-                        // Optional: Navigate to main path when clicked
-                        // navigate(`/workspace/${slug}/${item.path}`); 
+                        // Navigate to first subItem
+                        if (!isExpanded && item.subItems && item.subItems.length > 0) {
+                          navigate(`/workspace/${slug}/${item.path}/${item.subItems[0].path}`);
+                        }
                       }}
                       className={`flex w-full items-center justify-between px-2.5 py-2 rounded-md text-[13px] font-medium transition-colors lowercase ${
                         active ? 'bg-accent/10 text-accent' : 'text-content-secondary hover:bg-[#fbfbfd] hover:text-[#111827]'
@@ -216,6 +225,74 @@ export default function BrandDashboardLayout() {
                         const subPath = `/workspace/${slug}/${item.path}/${sub.path}`;
                         const isSubActive = location.pathname === subPath || (active && !location.pathname.includes(sub.path) && sub.path === 'overview');
                         // Simple active check for sub-items
+                        const isActiveReal = location.pathname.includes(sub.path);
+
+                        return (
+                          <Link
+                            key={sub.path}
+                            to={subPath}
+                            className={`flex items-center justify-between w-full px-2 py-1.5 text-[12px] rounded-md transition-colors lowercase font-medium ${
+                              isActiveReal ? 'text-[#111827] font-semibold bg-[#fbfbfd]' : 'text-content-muted hover:text-content-secondary'
+                            }`}
+                          >
+                            <span>{sub.name}</span>
+                            {sub.pro && (
+                              <span className="px-1.5 py-0.5 rounded bg-accent/10 text-accent text-[9px] font-bold uppercase tracking-wider">pro</span>
+                            )}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </nav>
+          
+          <nav className="space-y-0.5 mt-8">
+            {bottomNavItems.map((item) => {
+              const active = isItemActive(item.path);
+              const hasSubItems = !!item.subItems;
+              const isExpanded = expandedSections[item.path];
+
+              return (
+                <div key={item.path}>
+                  {hasSubItems ? (
+                    <button 
+                      onClick={() => {
+                        toggleSection(item.path);
+                        // Navigate to first subItem
+                        if (!isExpanded && item.subItems && item.subItems.length > 0) {
+                          navigate(`/workspace/${slug}/${item.path}/${item.subItems[0].path}`);
+                        }
+                      }}
+                      className={`flex w-full items-center justify-between px-2.5 py-2 rounded-md text-[13px] font-medium transition-colors lowercase ${
+                        active ? 'bg-accent/10 text-accent' : 'text-content-secondary hover:bg-[#fbfbfd] hover:text-[#111827]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <item.icon className="w-4 h-4" />
+                        {item.name}
+                      </div>
+                      <ChevronRight className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                    </button>
+                  ) : (
+                    <Link
+                      to={`/workspace/${slug}/${item.path}`}
+                      className={`flex w-full items-center gap-2.5 px-2.5 py-2 rounded-md text-[13px] font-medium transition-colors lowercase ${
+                        active ? 'bg-accent/10 text-accent' : 'text-content-secondary hover:bg-[#fbfbfd] hover:text-[#111827]'
+                      }`}
+                    >
+                      <item.icon className="w-4 h-4" />
+                      {item.name}
+                    </Link>
+                  )}
+
+                  {/* SubItems */}
+                  {hasSubItems && isExpanded && (
+                    <div className="mt-0.5 mb-1.5 pl-9 pr-2 space-y-0.5">
+                      {item.subItems.map(sub => {
+                        const subPath = `/workspace/${slug}/${item.path}/${sub.path}`;
                         const isActiveReal = location.pathname.includes(sub.path);
 
                         return (
