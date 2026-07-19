@@ -1,0 +1,39 @@
+import React from 'react';
+import { 
+  Home, BarChart2, TrendingUp, Search, Bell, Settings, 
+  Database, ShieldAlert, Zap, Layout, ArrowLeft,
+  MessageSquare, FileText, Globe
+} from 'lucide-react';
+import { useBrands } from './BrandContext';
+import AILogo from './AILogo';
+
+export default function Sidebar({ active, onSelect }) {
+  const { setActiveBrandId } = useBrands();
+
+  const navItems = [
+    { id: 'overview', icon: <Home size={18} />, label: 'Сводка' },
+    { id: 'projects', icon: <Database size={18} />, label: 'Мониторинг' },
+    { id: 'analytics', icon: <BarChart2 size={18} />, label: 'Аналитика' },
+    { id: 'market', icon: <Globe size={18} />, label: 'Рынок' },
+    { id: 'head2head', icon: <TrendingUp size={18} />, label: 'Сравнение' },
+    { id: 'optimization', icon: <Zap size={18} />, label: 'Оптимизация' },
+    { id: 'factcheck', icon: <ShieldAlert size={18} />, label: 'Фактчекинг' },
+    { id: 'playground', icon: <MessageSquare size={18} />, label: 'Песочница' },
+    { id: 'alerts', icon: <Bell size={18} />, label: 'Оповещения' },
+    { id: 'brand_settings', icon: <Settings size={18} />, label: 'Настройки проекта' }
+  ];
+
+  return (
+    <div className="w-64 bg-surface border-r border-surface-border flex flex-col h-full shrink-0">
+      <div className="h-16 flex items-center px-6 border-b border-surface-border shrink-0 gap-3">
+        {/* Back to Hub Button */}
+        <button 
+          onClick={() => setActiveBrandId(null)}
+          className="p-1.5 rounded-lg text-content-secondary hover:text-content-primary hover:bg-panel transition-colors"
+          title="Вернуться к списку проектов"
+        >
+          <ArrowLeft size={16} />
+        </button>
+        <div className="flex items-center gap-2 text-content-primary">
+          <AILogo className="w-5 h-5 text-accent" />
+          <span className="font-bold tracking-tight text-[15p

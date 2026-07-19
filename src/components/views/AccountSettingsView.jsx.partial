@@ -1,0 +1,199 @@
+﻿import { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabase';
+import { User, CreditCard, Users, Key, LogOut, Copy } from 'lucide-react';
+
+export default function AccountSettingsView() {
+  const [activeTab, setActiveTab] = useState('profile');
+  const [userEmail, setUserEmail] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState('');
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) setUserEmail(session.user.email);
+    });
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  const copyApiKey = () => {
+    navigator.clipboard.writeText('sk_test_51Nx...8aZq');
+    alert('API ключ скопирован в буфер обмена');
+  };
+
+  return (
+    <div className="flex flex-col gap-4 relative max-w-5xl mx-auto w-full">
+
+      {/* HEADER */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-[18px] font-semibold text-content-primary tracking-tight">Настройки аккаунта</h1>
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-6 items-start">
+
+        {/* Navigation Sidebar */}
+        <div className="w-full md:w-56 shrink-0 flex flex-col gap-0.5 border-r border-surface-border pr-4">
+          <button
+            onClick={() => setActiveTab('profile')}
+            className={	ext-left px-3 py-2 rounded-md text-[13px] font-medium transition-colors ${activeTab === 'profile' ? 'bg-surface text-content-primary' : 'text-content-secondary hover:text-content-primary hover:bg-surface/50'} flex items-center gap-2}
+          >
+            <User size={15} /> Профиль
+          </button>
+          <button
+            onClick={() => setActiveTab('team')}
+            className={	ext-left px-3 py-2 rounded-md text-[13px] font-medium transition-colors ${activeTab === 'team' ? 'bg-surface text-content-primary' : 'text-content-secondary hover:text-content-primary hover:bg-surface/50'} flex items-center gap-2}
+          >
+            <Users size={15} /> Команда
+          </button>
+          <button
+            onClick={() => setActiveTab('billing')}
+            className={	ext-left px-3 py-2 rounded-md text-[13px] font-medium transition-colors ${activeTab === 'billing' ? 'bg-surface text-content-primary' : 'text-content-secondary hover:text-content-primary hover:bg-surface/50'} flex items-center gap-2}
+          >
+            <CreditCard size={15} /> Оплата
+          </button>
+          <button
+            onClick={() => setActiveTab('api')}
+            className={	ext-left px-3 py-2 rounded-md text-[13px] font-medium transition-colors ${activeTab === 'api' ? 'bg-surface text-content-primary' : 'text-content-secondary hover:text-content-primary hover:bg-surface/50'} flex items-center gap-2}
+          >
+            <Key size={15} /> API Ключи
+          </button>
+
+          <div className="h-px bg-surface-border my-2 mx-2" />
+
+          <button
+            onClick={handleLogout}
+            className="text-left px-3 py-2 rounded-md text-[13px] font-medium transition-colors text-negative hover:bg-negative/10 flex items-center gap-2"
+          >
+            <LogOut size={15} /> Выйти
+          </button>
+        </div>
+
+        {/* Content Area */}
+        <div className="flex-1 w-full pl-0 md:pl-6 min-h-[400px]">
+
+          {/* PROFILE TAB */}
+          {activeTab === 'profile' && (
+            <div className="animate-in fade-in duration-200">
+              <h2 className="text-[14px] font-medium text-content-primary mb-6 border-b border-surface-border pb-2">Личные данные</h2>
+
+              <div className="flex items-center gap-4 mb-8">
+                <div className="w-12 h-12 bg-surface flex items-center justify-center text-lg font-mono-tabular text-content-primary">
+                  {userEmail ? userEmail[0].toUpperCase() : 'U'}
+                </div>
+                <div>
+                  <h3 className="text-[13px] font-medium text-content-primary">{userEmail || 'Пользователь'}</h3>
+                  <p className="text-[11px] text-content-secondary mt-0.5 uppercase tracking-wider">Administrator</p>
+                </div>
+              </div>
+
+              <div className="space-y-6 max-w-sm">
+                <div>
+                  <label className="block text-[10px] font-semibold text-content-muted mb-1 uppercase tracking-widest">Email</label>
+                  <input type="email" disabled value={userEmail} className="w-full bg-transparent border-b border-surface-border py-2 text-[13px] text-content-secondary cursor-not-allowed outline-none" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-content-muted mb-1 uppercase tracking-widest">Имя</label>
+                  <input type="text" placeholder="Введите ваше имя" className="w-full bg-transparent border-b border-surface-border py-2 text-[13px] text-content-primary focus:outline-none focus:border-indigo transition-colors" />
+                </div>
+                <button className="bg-indigo hover:bg-indigo/90 text-white px-4 py-2 text-[13px] font-medium transition-colors mt-2">Сохранить</button>
+              </div>
+            </div>
+          )}
+
+          {/* TEAM TAB */}
+          {activeTab === 'team' && (
+            <div className="animate-in fade-in duration-200">
+              <div className="flex items-center justify-between mb-6 border-b border-surface-border pb-2">
+                <h2 className="text-[14px] font-medium text-content-primary">Управление командой</h2>
+                <button className="bg-indigo hover:bg-indigo/90 text-white px-4 py-1.5 text-[11px] font-medium transition-colors">Пригласить</button>
+              </div>
+
+              <table className="w-full text-left">
+                <thead className="border-b border-surface-border">
+                  <tr>
+                    <th className="px-0 py-3 text-[10px] font-semibold text-content-muted uppercase tracking-widest">Пользователь</th>
+                    <th className="px-4 py-3 text-[10px] font-semibold text-content-muted uppercase tracking-widest">Роль</th>
+                    <th className="px-4 py-3 text-[10px] font-semibold text-content-muted uppercase tracking-widest text-right">Статус</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b border-surface-border/50">
+                    <td className="px-0 py-4 flex items-center gap-3">
+                      <div className="w-7 h-7 bg-surface flex items-center justify-center font-semibold text-xs text-content-primary">
+                        {userEmail ? userEmail[0].toUpperCase() : 'U'}
+                      </div>
+                      <span className="font-medium text-content-primary text-[13px]">{userEmail}</span>
+                    </td>
+                    <td className="px-4 py-4 text-[13px] text-content-secondary">Admin</td>
+                    <td className="px-4 py-4 text-right">
+                      <span className="text-positive text-[10px] font-medium uppercase tracking-widest">Активен</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* BILLING TAB */}
+          {activeTab === 'billing' && (
+            <div className="animate-in fade-in duration-200">
+              <h2 className="text-[14px] font-medium text-content-primary mb-6 border-b border-surface-border pb-2">Управление подпиской</h2>
+
+              <div className="border-b border-surface-border pb-6 mb-6 flex justify-between items-center">
+                <div>
+                  <h3 className="text-[12px] font-semibold text-content-primary mb-1 uppercase tracking-widest">Enterprise AI</h3>
+                  <p className="text-content-secondary text-[13px]">10 000 проверок / месяц</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-positive text-[10px] font-medium uppercase tracking-widest mb-2 inline-block">Активен</span>
+                  <div className="flex items-baseline gap-1 justify-end">
+                    <span className="text-[24px] font-semibold text-content-primary font-mono-tabular"></span>
+                    <span className="text-content-secondary text-[11px] uppercase tracking-wider">/ месяц</span>
+                  </div>
+                </div>
+              </div>
+
+              <h3 className="text-[10px] font-semibold text-content-muted uppercase tracking-widest mb-3">Способ оплаты</h3>
+              <div className="flex items-center justify-between max-w-sm pb-2 border-b border-surface-border">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-6 bg-surface flex items-center justify-center text-content-primary font-semibold text-[9px] uppercase tracking-widest">VISA</div>
+                  <div>
+                    <p className="text-[12px] font-medium text-content-primary font-mono-tabular">**** **** **** 4242</p>
+                    <p className="text-[10px] text-content-secondary font-mono-tabular uppercase tracking-wider">Exp 12/28</p>
+                  </div>
+                </div>
+                <button className="text-[11px] font-medium text-indigo hover:text-indigo/80 uppercase tracking-widest transition-colors">Изменить</button>
+              </div>
+            </div>
+          )}
+
+          {/* API TAB */}
+          {activeTab === 'api' && (
+            <div className="animate-in fade-in duration-200">
+              <h2 className="text-[14px] font-medium text-content-primary mb-2 border-b border-surface-border pb-2">API Ключи</h2>
+              <p className="text-[12px] text-content-secondary mb-6">
+                 Используйте эти ключи для интеграции с другими сервисами (n8n, webhook и т.д.).
+              </p>
+
+              <div className="max-w-md">
+                <div className="mb-6">
+                  <label className="block text-[10px] font-semibold text-content-muted mb-1 uppercase tracking-widest">Secret Token</label>
+                  <div className="flex gap-2">
+                    <input type="password" value="sk_test_51Nx...8aZq" readOnly className="flex-1 bg-transparent border-b border-surface-border py-2 text-[13px] font-mono-tabular text-content-secondary outline-none" />
+                    <button onClick={copyApiKey} className="text-content-secondary hover:text-indigo transition-colors flex items-center justify-center px-2"><Copy size={16} /></button>
+                  </div>
+                </div>
+
+                <button className="bg-indigo hover:bg-indigo/90 text-white px-4 py-2 text-[13px] font-medium transition-colors">Сгенерировать новый</button>
+              </div>
+            </div>
+          )}
+
+
+        </div>
+      </div>
+    </div>
+  );
+}

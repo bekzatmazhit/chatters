@@ -1,0 +1,36 @@
+import React, { useState } from 'react';
+import { useBrands } from './BrandContext';
+import { useTheme } from './ThemeContext';
+import { Bell, Sun, Moon, Search, ChevronDown, Check, User } from 'lucide-react';
+
+export default function TopBar() {
+  const { brands, activeBrandId, setActiveBrandId } = useBrands();
+  const { theme, toggleTheme } = useTheme();
+  
+  const [showBrandDropdown, setShowBrandDropdown] = useState(false);
+  const activeBrand = brands.find(b => b.id === activeBrandId);
+
+  return (
+    <div className="h-16 bg-surface border-b border-surface-border flex items-center justify-between px-6 shrink-0 z-20">
+      
+      {/* Brand Selector */}
+      <div className="relative">
+        <button 
+          onClick={() => setShowBrandDropdown(!showBrandDropdown)}
+          className="flex items-center gap-3 h-10 px-3 rounded-lg hover:bg-panel border border-transparent hover:border-surface-border transition-colors group"
+        >
+          <div className="w-6 h-6 rounded bg-accent/10 flex items-center justify-center text-accent overflow-hidden">
+            {activeBrand?.logo_url ? (
+              <img src={activeBrand.logo_url} alt="Logo" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-[12px] font-bold">{activeBrand?.name?.[0]?.toUpperCase() || 'B'}</span>
+            )}
+          </div>
+          <span className="font-semibold text-[14px] text-content-primary">{activeBrand?.name || 'Выберите бренд'}</span>
+          <ChevronDown size={14} className="text-content-muted group-hover:text-content-primary transition-colors" />
+        </button>
+
+        {showBrandDropdown && (
+          <div className="absolute top-full left-0 mt-2 w-64 panel rounded-xl border border-surface-border shadow-2xl py-2 z-50">
+            <div className="px-3 pb-2 mb-2 border-b border-surface-border">
+              <p className="text-[11px] font-medium text-content-secondary uppercase tracking-widest px-1">Ваш
