@@ -18,6 +18,12 @@ const mockLogs = [
   { id: 5, date: '23.10.2023 18:20', prompt: 'какой софт использует apple', model: 'chatgpt', result: { found: true, competitors: 2 } },
 ];
 
+// Personas mock
+const MOCK_PERSONAS = [
+  { id: '1', name: 'Студент', role: 'Студент', icon_emoji: '🎓', is_active: true },
+  { id: '2', name: 'Предприниматель', role: 'Владелец ИП', icon_emoji: '💼', is_active: true },
+];
+
 export default function RunsView() {
   const { slug } = useParams();
   const location = useLocation();
@@ -53,6 +59,10 @@ export default function RunsView() {
     if (selectedModels.includes(m)) setSelectedModels(selectedModels.filter(x => x !== m));
     else setSelectedModels([...selectedModels, m]);
   };
+
+  const [personas] = useState<any[]>(MOCK_PERSONAS);
+  const [selectedPersona, setSelectedPersona] = useState<string | null>(null);
+  const [isGeneratingVariant, setIsGeneratingVariant] = useState(false);
 
   // Fetch History
   useEffect(() => {
@@ -110,8 +120,20 @@ export default function RunsView() {
 
   const handleRun = async () => {
     if (!manualPrompt.trim() || selectedModels.length === 0) return;
+    
+    // Simulate generate-persona-variant
+    let finalPrompt = manualPrompt;
+    if (selectedPersona) {
+      setIsGeneratingVariant(true);
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      const p = personas.find(x => x.id === selectedPersona);
+      finalPrompt = `[${p?.name}] Как студент, который хочет сэкономить: ${manualPrompt}`;
+      setManualPrompt(finalPrompt);
+      setIsGeneratingVariant(false);
+    }
+
     setIsRunning(true);
-    setRunResults(selectedModels.map(m => ({ model: m, loading: true })));
+    setRunResults(selectedModels.map(m => ({ model: m, loading: true, personaId: selectedPersona })));
     
     try {
       const { data, error } = await supabase.functions.invoke('manual-run', {
@@ -126,6 +148,7 @@ export default function RunsView() {
         setRunResults(
           selectedModels.map(m => ({
             model: m,
+            personaId: selectedPersona,
             version: m === 'chatgpt' ? 'gpt-4o' : m === 'claude' ? 'claude-3.5-sonnet' : m === 'gemini' ? 'gemini-1.5-pro' : 'sonar-pro',
             response: `Здесь находится сгенерированный ответ от модели ${m}. Упоминание бренда <span class="bg-accent/20 text-accent font-bold px-1 rounded">${currentBrand?.name || slug}</span> найдено в контексте отличного решения для бизнеса, наряду с несколькими альтернативами. Модель также указала ключевые фичи продукта.`,
           }))
@@ -265,8 +288,9 @@ export default function RunsView() {
             />
             
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex flex-wrap items-center gap-2">
-                {['chatgpt', 'claude', 'gemini', 'perplexity'].map(m => {
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  {['chatgpt', 'claude', 'gemini', 'perplexity'].map(m => {
                   const isSelected = selectedModels.includes(m);
                   return (
                     <button 
@@ -279,15 +303,29 @@ export default function RunsView() {
                     </button>
                   );
                 })}
+                </div>
+                
+                <div className="h-6 w-px bg-border/50 hidden sm:block"></div>
+                
+                <select 
+                  className="h-9 pl-3 pr-8 rounded-lg border border-border bg-[#fbfbfd] text-[12px] font-medium text-content-secondary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent appearance-none cursor-pointer hover:border-accent/50 transition-colors"
+                  value={selectedPersona || ''}
+                  onChange={e => setSelectedPersona(e.target.value || null)}
+                >
+                  <option value="">Без персонажа</option>
+                  {personas.filter(p => p.is_active).map(p => (
+                    <option key={p.id} value={p.id}>{p.icon_emoji} от лица: {p.name}</option>
+                  ))}
+                </select>
               </div>
               
-              <Button onClick={handleRun} disabled={isRunning || !manualPrompt.trim() || selectedModels.length === 0} className="h-9 px-6 rounded-md lowercase font-medium text-[13px] w-full sm:w-auto shrink-0">
-                {isRunning ? (
+              <Button onClick={handleRun} disabled={isRunning || isGeneratingVariant || !manualPrompt.trim() || selectedModels.length === 0} className="h-9 px-6 rounded-md lowercase font-medium text-[13px] w-full sm:w-auto shrink-0">
+                {isRunning || isGeneratingVariant ? (
                   <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                 ) : (
                   <Play className="w-4 h-4 mr-2 fill-current" />
                 )}
-                запустить
+                {isGeneratingVariant ? 'переформулируем...' : 'запустить'}
               </Button>
             </div>
           </div>
@@ -303,6 +341,11 @@ export default function RunsView() {
                       <ModelIcon model={res.model} size={18} />
                       <span className="text-[12px] font-medium text-white">{res.model === 'chatgpt' ? 'ChatGPT' : res.model.charAt(0).toUpperCase() + res.model.slice(1)}</span>
                       {!res.loading && <span className="text-[10px] font-mono text-white/40 ml-1">{res.version}</span>}
+                      {res.personaId && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded-sm bg-white/10 text-white/80 text-[10px] font-medium flex items-center gap-1">
+                          {personas.find(p => p.id === res.personaId)?.icon_emoji} {personas.find(p => p.id === res.personaId)?.name}
+                        </span>
+                      )}
                     </div>
                     {!res.loading && (
                       <button 

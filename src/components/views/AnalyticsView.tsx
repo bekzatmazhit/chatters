@@ -29,9 +29,9 @@ const SOURCES_DATA = [
 ];
 
 const PROMPTS_DATA = [
-  { id: 1, text: 'какой лучший банк для бизнеса в казахстане?', models: ['chatgpt', 'claude', 'gemini'], freq: 45, lastFound: true, active: true },
-  { id: 2, text: 'открыть ип онлайн бесплатно', models: ['chatgpt', 'perplexity'], freq: 12, lastFound: false, active: true },
-  { id: 3, text: 'отзывы о приложении каспи', models: ['claude', 'gemini'], freq: 84, lastFound: true, active: false },
+  { id: 1, text: 'какой лучший банк для бизнеса в казахстане?', models: ['chatgpt', 'claude', 'gemini'], freq: 45, lastFound: true, active: true, runForPersonas: ['1', '2'] },
+  { id: 2, text: 'открыть ип онлайн бесплатно', models: ['chatgpt', 'perplexity'], freq: 12, lastFound: false, active: true, runForPersonas: [] },
+  { id: 3, text: 'отзывы о приложении каспи', models: ['claude', 'gemini'], freq: 84, lastFound: true, active: false, runForPersonas: ['3'] },
 ];
 
 const COMPARE_DATA = [
@@ -45,6 +45,12 @@ const COMPARE_SOV_DATA = [
   { name: 'Конкурент 1', sov: 38 },
   { name: 'Конкурент 2', sov: 25 },
   { name: 'Конкурент 3', sov: 15 },
+];
+
+const MOCK_PERSONAS = [
+  { id: '1', name: 'Студент', role: 'Студент', city: 'Алматы', language: 'ru', context_notes: 'экономит, ищет кэшбеки', icon_emoji: '🎓', is_active: true, sov: 45, mentions: 120, sentiment: 4.2 },
+  { id: '2', name: 'Предприниматель', role: 'Владелец ИП', city: 'Астана', language: 'ru', context_notes: 'важны условия по эквайрингу', icon_emoji: '💼', is_active: true, sov: 38, mentions: 85, sentiment: 3.9 },
+  { id: '3', name: 'Пенсионер', role: 'Пенсионер', city: 'Шымкент', language: 'kz', context_notes: 'плохо разбирается в технологиях', icon_emoji: '👵', is_active: false, sov: 20, mentions: 15, sentiment: 2.1 },
 ];
 
 const MARKET_DATA = [
@@ -83,6 +89,15 @@ export default function AnalyticsView() {
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [newPromptText, setNewPromptText] = useState('');
   const [newPromptModels, setNewPromptModels] = useState<string[]>(['chatgpt']);
+
+  // Personas State
+  const [personas, setPersonas] = useState<any[]>(MOCK_PERSONAS);
+  const [isPersonaModalOpen, setIsPersonaModalOpen] = useState(false);
+  const [editingPersonaId, setEditingPersonaId] = useState<string | null>(null);
+  const [isSuggestingPersonas, setIsSuggestingPersonas] = useState(false);
+  const [selectedPersonaForExamples, setSelectedPersonaForExamples] = useState<string | null>(null);
+  const [newPersona, setNewPersona] = useState({ name: '', role: '', city: '', language: 'ru', context_notes: '', icon_emoji: '👤' });
+  const [selectedPersonasForPrompt, setSelectedPersonasForPrompt] = useState<string[]>([]);
 
   // Fetch Logic depending on active tab
   useEffect(() => {
@@ -197,6 +212,7 @@ export default function AnalyticsView() {
     { id: 'models', label: 'по моделям' },
     { id: 'sources', label: 'источники' },
     { id: 'prompts', label: 'промпты' },
+    { id: 'personas', label: 'персонажи' },
     { id: 'compare', label: 'сравнение' },
     { id: 'market', label: 'рынок' },
   ];
@@ -404,6 +420,14 @@ export default function AnalyticsView() {
                             <ModelIcon key={m} model={m} size={16} />
                           ))}
                         </div>
+                        {prompt.runForPersonas && prompt.runForPersonas.length > 0 && (
+                          <div className="flex items-center gap-0.5 mt-1">
+                            {prompt.runForPersonas.map((pid: string) => {
+                              const p = personas.find(x => x.id === pid);
+                              return p ? <span key={pid} title={p.name} className="text-[12px] opacity-80">{p.icon_emoji}</span> : null;
+                            })}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-[13px] font-medium text-[#111827]">{prompt.freq}</td>
                       <td className="px-4 py-3">
@@ -438,6 +462,147 @@ export default function AnalyticsView() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: PERSONAS */}
+        {activeTab === 'personas' && (
+          <div className="flex flex-col gap-6 flex-1 min-h-0 relative">
+            {isLoading && (
+              <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-20 flex items-center justify-center">
+                <RefreshCw className="w-6 h-6 text-accent animate-spin" />
+              </div>
+            )}
+            
+            {/* Personas Library */}
+            <div className="bg-white border border-border rounded-xl shadow-sm p-5 shrink-0">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="eyebrow">библиотека персонажей</h2>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    className="h-8 px-3 text-[12px] lowercase bg-[#fbfbfd]"
+                    onClick={() => {
+                      setIsSuggestingPersonas(true);
+                      setTimeout(() => {
+                        setPersonas(prev => [
+                          ...prev,
+                          { id: Date.now() + 'a', name: 'Иностранец', role: 'Экспат', city: 'Алматы', language: 'en', context_notes: 'ищет мультивалютную карту', icon_emoji: '🌍', is_active: false, sov: 0, mentions: 0, sentiment: 0 }
+                        ]);
+                        setIsSuggestingPersonas(false);
+                      }, 1500);
+                    }}
+                    disabled={isSuggestingPersonas}
+                  >
+                    {isSuggestingPersonas ? <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Plus className="w-3.5 h-3.5 mr-1.5" />}
+                    предложить персонажей
+                  </Button>
+                  <Button 
+                    className="h-8 px-3 text-[12px] lowercase"
+                    onClick={() => {
+                      setEditingPersonaId(null);
+                      setNewPersona({ name: '', role: '', city: '', language: 'ru', context_notes: '', icon_emoji: '👤' });
+                      setIsPersonaModalOpen(true);
+                    }}
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1.5" /> создать персонажа
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {personas.map(p => (
+                  <div key={p.id} className={`border rounded-xl p-4 transition-colors ${p.is_active ? 'border-border/60 hover:border-border bg-white' : 'border-border/40 bg-[#fbfbfd] opacity-70'}`}>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center text-xl">
+                          {p.icon_emoji}
+                        </div>
+                        <div>
+                          <div className="text-[14px] font-bold text-[#111827]">{p.name}</div>
+                          <div className="text-[12px] font-medium text-content-secondary">{p.role}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button className="text-content-tertiary hover:text-accent transition-colors" title="Редактировать"><MoreVertical className="w-4 h-4" /></button>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] text-content-tertiary font-mono mb-3">
+                      {p.city && <span className="px-1.5 py-0.5 rounded bg-[#fbfbfd] border border-border/50">{p.city}</span>}
+                      <span className="px-1.5 py-0.5 rounded bg-[#fbfbfd] border border-border/50 uppercase">{p.language}</span>
+                    </div>
+                    <p className="text-[12px] text-content-secondary leading-relaxed line-clamp-2">
+                      {p.context_notes}
+                    </p>
+                    <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between">
+                      <div className={`text-[11px] font-mono font-medium ${p.is_active ? 'text-[#0F6E56]' : 'text-content-muted'}`}>
+                        {p.is_active ? 'Активен' : 'Отключен'}
+                      </div>
+                      <div 
+                        className={`relative inline-flex h-4 w-7 cursor-pointer items-center rounded-full transition-colors ${p.is_active ? 'bg-accent' : 'bg-border'}`}
+                        onClick={() => setPersonas(prev => prev.map(x => x.id === p.id ? { ...x, is_active: !x.is_active } : x))}
+                      >
+                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${p.is_active ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Comparison Analytics */}
+            <div className="bg-white border border-border rounded-xl shadow-sm flex-1 flex flex-col min-h-0">
+              <div className="p-4 border-b border-border flex items-center justify-between shrink-0">
+                <h2 className="eyebrow">сравнение sov по персонажам</h2>
+              </div>
+              <div className="flex-1 overflow-auto custom-scrollbar flex flex-col lg:flex-row min-h-0">
+                <div className="flex-1 p-4 border-b lg:border-b-0 lg:border-r border-border overflow-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="sticky top-0 bg-white border-b border-border z-10">
+                      <tr>
+                        <th className="px-3 py-2 font-mono text-[11px] font-medium text-content-muted uppercase tracking-wider">персонаж</th>
+                        <th className="px-3 py-2 font-mono text-[11px] font-medium text-content-muted uppercase tracking-wider text-right">sov %</th>
+                        <th className="px-3 py-2 font-mono text-[11px] font-medium text-content-muted uppercase tracking-wider text-right">упоминания</th>
+                        <th className="px-3 py-2 font-mono text-[11px] font-medium text-content-muted uppercase tracking-wider text-right">тональность</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/50">
+                      {personas.map(p => (
+                        <tr key={p.id} className="hover:bg-[#fbfbfd] transition-colors cursor-pointer" onClick={() => setSelectedPersonaForExamples(p.id)}>
+                          <td className="px-3 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg">{p.icon_emoji}</span>
+                              <span className="text-[13px] font-medium text-[#111827]">{p.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-right font-mono text-[13px] font-bold text-[#111827]">{p.sov}%</td>
+                          <td className="px-3 py-3 text-right font-mono text-[12px] text-content-secondary">{p.mentions}</td>
+                          <td className="px-3 py-3 text-right font-mono text-[12px]">
+                            <span className={p.sentiment > 3 ? 'text-[#0F6E56]' : 'text-[#A32D2D]'}>{p.sentiment}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="w-full lg:w-1/3 p-4 bg-[#fbfbfd] flex flex-col min-h-0">
+                  <h3 className="eyebrow mb-3">примеры ответов {selectedPersonaForExamples && personas.find(x => x.id === selectedPersonaForExamples)?.icon_emoji}</h3>
+                  <div className="flex-1 overflow-auto custom-scrollbar space-y-3">
+                    <div className="bg-white border border-border rounded-lg p-3 shadow-sm">
+                      <div className="flex items-center justify-between mb-2 pb-2 border-b border-border/50">
+                        <div className="flex items-center gap-1.5 text-[11px] font-mono text-content-secondary">
+                          <ModelIcon model="chatgpt" size={14} /> chatgpt
+                        </div>
+                        <span className="text-[10px] uppercase font-bold text-[#0F6E56] bg-[#E1F5EE] px-1.5 py-0.5 rounded">положительно</span>
+                      </div>
+                      <div className="text-[12px] text-[#111827] leading-relaxed line-clamp-4">
+                        "Для студентов отличным выбором будет карта от Halyk, так как они предоставляют бесплатное обслуживание и повышенные бонусы..."
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -640,10 +805,106 @@ export default function AnalyticsView() {
                   ))}
                 </div>
               </div>
+              {personas.length > 0 && (
+                <div>
+                  <label className="eyebrow mb-2 block">Прогонять для персонажей</label>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {personas.filter(p => p.is_active).map(p => (
+                      <button
+                        key={p.id}
+                        className={`h-8 px-3 rounded-md text-[12px] font-medium transition-colors border ${selectedPersonasForPrompt.includes(p.id) ? 'bg-accent/10 border-accent/20 text-accent' : 'bg-white border-border text-content-secondary hover:text-[#111827]'}`}
+                        onClick={() => setSelectedPersonasForPrompt(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>{p.icon_emoji}</span>
+                          {p.name}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="p-4 border-t border-border bg-[#fbfbfd] flex justify-end gap-3">
               <Button variant="outline" onClick={() => setIsAddPromptModalOpen(false)}>Отмена</Button>
               <Button onClick={handleSavePrompt}>Сохранить</Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Add Persona Modal */}
+      {isPersonaModalOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-border bg-[#fbfbfd]">
+              <div className="font-medium text-[#111827]">{editingPersonaId ? 'Редактировать персонажа' : 'Новый персонаж'}</div>
+              <button className="text-content-muted hover:text-[#111827]" onClick={() => setIsPersonaModalOpen(false)}>
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 flex flex-col gap-4">
+              <div className="flex gap-4">
+                <div className="w-16">
+                  <label className="eyebrow mb-2 block">Эмодзи</label>
+                  <input 
+                    type="text" 
+                    value={newPersona.icon_emoji}
+                    onChange={e => setNewPersona({...newPersona, icon_emoji: e.target.value})}
+                    className="w-full h-9 px-0 text-center text-xl bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 focus:ring-accent outline-none" 
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="eyebrow mb-2 block">Название (например: Студент)</label>
+                  <input 
+                    type="text" 
+                    value={newPersona.name}
+                    onChange={e => setNewPersona({...newPersona, name: e.target.value})}
+                    className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 focus:ring-accent outline-none" 
+                  />
+                </div>
+              </div>
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="eyebrow mb-2 block">Роль (опц.)</label>
+                  <input 
+                    type="text" 
+                    value={newPersona.role}
+                    onChange={e => setNewPersona({...newPersona, role: e.target.value})}
+                    placeholder="Владелец ИП"
+                    className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 focus:ring-accent outline-none" 
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="eyebrow mb-2 block">Город (опц.)</label>
+                  <input 
+                    type="text" 
+                    value={newPersona.city}
+                    onChange={e => setNewPersona({...newPersona, city: e.target.value})}
+                    placeholder="Алматы"
+                    className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 focus:ring-accent outline-none" 
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="eyebrow mb-2 block">Доп. контекст (инструкция для ИИ)</label>
+                <textarea 
+                  value={newPersona.context_notes}
+                  onChange={e => setNewPersona({...newPersona, context_notes: e.target.value})}
+                  placeholder="Опишите, что важно для этого человека (например: ищет скидки, не разбирается в IT)..."
+                  className="w-full h-24 p-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 focus:ring-accent outline-none resize-none custom-scrollbar"
+                />
+              </div>
+            </div>
+            <div className="p-4 border-t border-border bg-[#fbfbfd] flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setIsPersonaModalOpen(false)}>Отмена</Button>
+              <Button onClick={() => {
+                if (editingPersonaId) {
+                  setPersonas(prev => prev.map(p => p.id === editingPersonaId ? { ...p, ...newPersona } : p));
+                } else {
+                  setPersonas(prev => [{ id: Date.now().toString(), ...newPersona, is_active: true, sov: 0, mentions: 0, sentiment: 0 }, ...prev]);
+                }
+                setIsPersonaModalOpen(false);
+              }}>Сохранить</Button>
             </div>
           </div>
         </div>
