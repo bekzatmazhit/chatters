@@ -6,9 +6,12 @@ import { BrandAvatar } from '@/components/ui/BrandAvatar';
 import { ModelIcon } from '@/components/ui/ModelIcon';
 import { 
   Search, Moon, Sun, Bell, Settings, Users, CreditCard, LogOut,
-  RefreshCw, Plus, Download, TrendingUp, TrendingDown, PlaySquare, ArrowUpRight, ArrowDownRight
+  RefreshCw, Plus, Download, TrendingUp, TrendingDown, PlaySquare, ArrowUpRight, ArrowDownRight, Loader2
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { supabase } from '@/lib/supabase';
+import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
+import { ExportReportModal, AddCompetitorModal } from '@/components/workspace/QuickActions';
 
 export default function WorkspaceHubView() {
   const { brands } = useBrands();
@@ -17,6 +20,17 @@ export default function WorkspaceHubView() {
 
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [sovPeriod, setSovPeriod] = useState(30);
+
+  // Modal states
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [showCompetitorModal, setShowCompetitorModal] = useState(false);
+  
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Run checks state
+  const [isRunningChecks, setIsRunningChecks] = useState(false);
 
   // Fake SOV history generator with forecast
   const sovHistory = useMemo(() => {
@@ -60,6 +74,12 @@ export default function WorkspaceHubView() {
     { id: 6, text: 'обновление отчета', project: brands[1]?.name || 'Acme', time: 'вчера', isNegative: false },
   ];
 
+  const filteredBrands = useMemo(() => {
+    if (!searchQuery.trim()) return brands;
+    const query = searchQuery.toLowerCase();
+    return brands.filter(b => b.name.toLowerCase().includes(query));
+  }, [brands, searchQuery]);
+
   const topChanges = useMemo(() => {
     if (brands.length === 0) return [];
     return brands.map((b, idx) => ({
@@ -87,6 +107,26 @@ export default function WorkspaceHubView() {
     return null;
   };
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate('/login');
+  };
+
+  const handleRunChecks = async () => {
+    setIsRunningChecks(true);
+    try {
+      const { error } = await supabase.functions.invoke('run-all-checks');
+      if (error) throw error;
+      // In real scenario we'd use toast
+      alert('Проверка успешно запущена');
+    } catch (err: any) {
+      console.error(err);
+      alert('Запуск проверки пока недоступен (требуется деплой Edge Function).');
+    } finally {
+      setIsRunningChecks(false);
+    }
+  };
+
   return (
     <div className="min-h-screen lg:h-screen lg:overflow-hidden flex flex-col bg-[#fbfbfd] text-content-primary font-sans selection:bg-accent/20">
       
@@ -105,6 +145,8 @@ export default function WorkspaceHubView() {
             <input 
               type="text" 
               placeholder="найти проект..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full h-9 pl-9 pr-12 bg-[#fbfbfd] border border-border rounded-md text-[13px] text-content-primary placeholder-content-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all lowercase"
             />
             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -243,7 +285,7 @@ export default function WorkspaceHubView() {
               
               <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {brands.map((brand, idx) => {
+                  {filteredBrands.map((brand, idx) => {
                     const color = brand.color || `hsl(${idx * 60}, 70%, 50%)`;
                     return (
                       <div 
@@ -294,7 +336,7 @@ export default function WorkspaceHubView() {
                   {/* New Brand Card */}
                   <button 
                     className="bg-transparent border-2 border-dashed border-border rounded-lg p-4 flex flex-col items-center justify-center text-content-muted hover:text-accent hover:border-accent/50 hover:bg-accent/5 transition-colors min-h-[220px]"
-                    onClick={() => navigate('/onboarding')}
+                    onClick={() => setShowOnboarding(true)}
                   >
                     <div className="w-10 h-10 rounded-full bg-surface border border-border flex items-center justify-center mb-3">
                       <Plus className="w-5 h-5" />
@@ -385,15 +427,31 @@ export default function WorkspaceHubView() {
               <div className="bg-white border border-border rounded-xl shadow-sm p-4">
                 <h2 className="text-[12px] uppercase tracking-wider font-bold text-[#111827] mb-4">быстрые действия</h2>
                 <div className="grid grid-cols-3 gap-3 h-[calc(100%-36px)]">
-                  <button className="flex flex-col items-center justify-center gap-2 p-3 bg-[#fbfbfd] border border-border rounded-lg hover:border-accent hover:text-accent transition-all group">
-                    <RefreshCw className="w-4 h-4 text-content-secondary group-hover:text-accent transition-colors" />
-                    <span className="text-[10px] font-bold text-content-secondary group-hover:text-accent text-center lowercase">запустить проверку</span>
+                  <button 
+                    onClick={handleRunChecks}
+                    disabled={isRunningChecks}
+                    className="flex flex-col items-center justify-center gap-2 p-3 bg-[#fbfbfd] border border-border rounded-lg hover:border-accent hover:text-accent transition-all group disabled:opacity-50"
+                  >
+                    {isRunningChecks ? (
+                      <Loader2 className="w-4 h-4 text-accent animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-4 h-4 text-content-secondary group-hover:text-accent transition-colors" />
+                    )}
+                    <span className="text-[10px] font-bold text-content-secondary group-hover:text-accent text-center lowercase">
+                      {isRunningChecks ? 'выполняется...' : 'запустить проверку'}
+                    </span>
                   </button>
-                  <button className="flex flex-col items-center justify-center gap-2 p-3 bg-[#fbfbfd] border border-border rounded-lg hover:border-accent hover:text-accent transition-all group">
+                  <button 
+                    onClick={() => setShowCompetitorModal(true)}
+                    className="flex flex-col items-center justify-center gap-2 p-3 bg-[#fbfbfd] border border-border rounded-lg hover:border-accent hover:text-accent transition-all group"
+                  >
                     <Plus className="w-4 h-4 text-content-secondary group-hover:text-accent transition-colors" />
                     <span className="text-[10px] font-bold text-content-secondary group-hover:text-accent text-center lowercase">добавить конкурента</span>
                   </button>
-                  <button className="flex flex-col items-center justify-center gap-2 p-3 bg-[#fbfbfd] border border-border rounded-lg hover:border-accent hover:text-accent transition-all group">
+                  <button 
+                    onClick={() => setShowExportModal(true)}
+                    className="flex flex-col items-center justify-center gap-2 p-3 bg-[#fbfbfd] border border-border rounded-lg hover:border-accent hover:text-accent transition-all group"
+                  >
                     <Download className="w-4 h-4 text-content-secondary group-hover:text-accent transition-colors" />
                     <span className="text-[10px] font-bold text-content-secondary group-hover:text-accent text-center lowercase">экспорт отчёта</span>
                   </button>
@@ -486,6 +544,20 @@ export default function WorkspaceHubView() {
           background: #D1D5DB;
         }
       `}} />
+
+      {/* Modals */}
+      {showOnboarding && (
+        <OnboardingWizard isModal onClose={() => setShowOnboarding(false)} />
+      )}
+      <ExportReportModal 
+        isOpen={showExportModal} 
+        onClose={() => setShowExportModal(false)} 
+      />
+      <AddCompetitorModal 
+        isOpen={showCompetitorModal} 
+        onClose={() => setShowCompetitorModal(false)} 
+        brands={brands} 
+      />
     </div>
   );
 }

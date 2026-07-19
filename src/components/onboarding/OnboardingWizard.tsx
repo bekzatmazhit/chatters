@@ -8,7 +8,13 @@ import { Loader2, ArrowLeft, X, Check, Sparkles } from 'lucide-react';
 
 const AVAILABLE_MODELS = ['ChatGPT', 'Claude', 'Gemini', 'Perplexity'];
 
-export default function OnboardingWizard() {
+export default function OnboardingWizard({ 
+  isModal = false, 
+  onClose 
+}: { 
+  isModal?: boolean; 
+  onClose?: () => void;
+} = {}) {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -106,10 +112,12 @@ export default function OnboardingWizard() {
   const handleClose = () => {
     if (step < 4) {
       if (window.confirm('Прогресс не сохранится. Вы уверены, что хотите прервать настройку?')) {
-        navigate('/workspace');
+        if (isModal && onClose) onClose();
+        else navigate('/workspace');
       }
     } else {
-      navigate('/workspace');
+      if (isModal && onClose) onClose();
+      else navigate('/workspace');
     }
   };
 
@@ -237,10 +245,10 @@ export default function OnboardingWizard() {
   };
 
   return (
-    <div className="flex min-h-screen bg-[#fbfbfd] font-sans text-content-primary selection:bg-accent/20">
+    <div className={isModal ? "fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6" : "flex min-h-screen bg-[#fbfbfd] font-sans text-content-primary selection:bg-accent/20"}>
       {/* Left Form Area */}
-      <div className="flex w-full flex-col justify-center px-4 py-8 sm:px-6 lg:w-1/2 lg:px-8">
-        <div className="mx-auto w-full max-w-[560px]">
+      <div className={isModal ? "w-full max-w-[600px]" : "flex w-full flex-col justify-center px-4 py-8 sm:px-6 lg:w-1/2 lg:px-8"}>
+        <div className={isModal ? "mx-auto w-full" : "mx-auto w-full max-w-[560px]"}>
           <div className="relative flex w-full flex-col rounded-xl border border-border bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
             
             {/* Header */}
@@ -461,23 +469,25 @@ export default function OnboardingWizard() {
       </div>
 
       {/* Right Image Area */}
-      <div className="hidden lg:block lg:w-1/2 relative bg-[#0b0d12]">
-        <img
-          src="/auth-bg.jpg"
-          alt="Chatters AI visibility platform"
-          className="absolute inset-0 h-full w-full object-cover opacity-80 mix-blend-lighten"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0b0d12] via-[#0b0d12]/20 to-transparent" />
-        
-        <div className="absolute bottom-0 left-0 right-0 p-16 text-white">
-          <h2 className="text-3xl font-bold tracking-tight text-white mb-4">
-            Настройте рабочее пространство
-          </h2>
-          <p className="text-lg text-white/70 max-w-[500px]">
-            Мы проанализируем ваш бренд и поможем автоматически подобрать ключевые поисковые интенты и конкурентов для мониторинга.
-          </p>
+      {!isModal && (
+        <div className="hidden lg:block lg:w-1/2 relative bg-[#0b0d12]">
+          <img
+            src="/auth-bg.jpg"
+            alt="Chatters AI visibility platform"
+            className="absolute inset-0 h-full w-full object-cover opacity-80 mix-blend-lighten"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0b0d12] via-[#0b0d12]/20 to-transparent" />
+          
+          <div className="absolute bottom-0 left-0 right-0 p-16 text-white">
+            <h2 className="text-3xl font-bold tracking-tight text-white mb-4">
+              Настройте рабочее пространство
+            </h2>
+            <p className="text-lg text-white/70 max-w-[500px]">
+              Мы проанализируем ваш бренд и поможем автоматически подобрать ключевые поисковые интенты и конкурентов для мониторинга.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

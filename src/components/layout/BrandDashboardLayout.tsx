@@ -5,9 +5,11 @@ import { BrandAvatar } from '@/components/ui/BrandAvatar';
 import { 
   LayoutDashboard, Play, BarChart2, Zap, Activity, Grid, Settings, 
   ChevronDown, ChevronRight, Search, HelpCircle, Download, Bell, 
-  ArrowLeft
+  ArrowLeft, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/lib/supabase';
+import { ExportReportModal } from '@/components/workspace/QuickActions';
 
 export default function BrandDashboardLayout() {
   const { slug } = useParams();
@@ -16,6 +18,8 @@ export default function BrandDashboardLayout() {
   const { brands } = useBrands();
   
   const [isBrandDropdownOpen, setIsBrandDropdownOpen] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
   
   // Find current brand or mock it
   const currentBrand = brands.find(b => b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === slug) 
@@ -99,6 +103,22 @@ export default function BrandDashboardLayout() {
   // Helper to get current section name for breadcrumbs
   const currentSectionName = navItems.find(item => isItemActive(item.path))?.name || 'сводка';
 
+  const handleRunProject = async () => {
+    setIsRunning(true);
+    try {
+      const { error } = await supabase.functions.invoke('run-project-check', {
+        body: { project_id: currentBrand.id }
+      });
+      if (error) throw error;
+      alert('Проверка проекта успешно запущена');
+    } catch (err) {
+      console.error(err);
+      alert('Запуск проверки пока недоступен (требуется деплой Edge Function).');
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-[#fbfbfd] text-content-primary font-sans">
       
@@ -131,7 +151,8 @@ export default function BrandDashboardLayout() {
                   className="w-full px-3 py-2 text-[13px] text-left hover:bg-[#fbfbfd] text-[#111827] font-medium flex items-center gap-2"
                   onClick={() => {
                     setIsBrandDropdownOpen(false);
-                    navigate(`/workspace/${b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}/overview`);
+                    const currentPathRest = location.pathname.split(`/workspace/${slug}/`)[1] || 'overview';
+                    navigate(`/workspace/${b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}/${currentPathRest}`);
                   }}
                 >
                   <BrandAvatar project={b} size={20} className="!rounded-sm" />
@@ -252,17 +273,28 @@ export default function BrandDashboardLayout() {
             <button className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[#fbfbfd] text-content-muted hover:text-[#111827] transition-colors">
               <Search className="w-4 h-4" />
             </button>
-            <button className="flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-[#fbfbfd] text-content-secondary hover:text-[#111827] transition-colors text-[12px] font-semibold lowercase">
+            <button 
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-[#fbfbfd] text-content-secondary hover:text-[#111827] transition-colors text-[12px] font-semibold lowercase"
+              onClick={() => window.open('https://docs.chatters.ai', '_blank')}
+            >
               <HelpCircle className="w-4 h-4" /> помощь
             </button>
-            <button className="flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-[#fbfbfd] text-content-secondary hover:text-[#111827] transition-colors text-[12px] font-semibold lowercase">
+            <button 
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-[#fbfbfd] text-content-secondary hover:text-[#111827] transition-colors text-[12px] font-semibold lowercase"
+              onClick={() => setShowExportModal(true)}
+            >
               <Download className="w-4 h-4" /> экспорт
             </button>
             
             <div className="w-px h-4 bg-border mx-1"></div>
 
-            <Button className="h-8 px-4 rounded-full text-[12px] lowercase font-semibold shadow-sm">
-              <Play className="w-3.5 h-3.5 mr-1.5 fill-current" /> запуск
+            <Button 
+              className="h-8 px-4 rounded-full text-[12px] lowercase font-semibold shadow-sm"
+              onClick={handleRunProject}
+              disabled={isRunning}
+            >
+              {isRunning ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />}
+              {isRunning ? 'выполняется...' : 'запуск'}
             </Button>
 
             <button className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[#fbfbfd] text-content-muted hover:text-[#111827] transition-colors relative ml-1">
@@ -284,6 +316,11 @@ export default function BrandDashboardLayout() {
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #E5E7EB; border-radius: 4px; }
         .custom-scrollbar:hover::-webkit-scrollbar-thumb { background: #D1D5DB; }
       `}} />
+
+      <ExportReportModal 
+        isOpen={showExportModal} 
+        onClose={() => setShowExportModal(false)} 
+      />
     </div>
   );
 }
