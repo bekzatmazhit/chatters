@@ -207,6 +207,7 @@ export default function OnboardingWizard() {
           logo_url: finalLogoUrl,
           color: '#10b981', // default color
           workspace_id: workspaceId,
+          user_id: userId,
           tracked_ai_models: selectedModels,
           competitors: competitors,
           tracked_prompts: queries
