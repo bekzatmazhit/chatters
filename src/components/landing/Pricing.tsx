@@ -1,10 +1,13 @@
 import { useI18n } from "@/lib/i18n";
 import { Check } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export function Pricing() {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const PLANS = [
     {
+      id: "starter",
       name: t("price.starter"),
       price: "49",
       period: t("price.mo"),
@@ -21,6 +24,7 @@ export function Pricing() {
       priceIsNumber: true,
     },
     {
+      id: "growth",
       name: t("price.growth"),
       price: "199",
       period: t("price.mo"),
@@ -38,6 +42,7 @@ export function Pricing() {
       priceIsNumber: true,
     },
     {
+      id: "agency",
       name: t("price.agency"),
       price: t("price.custom"),
       period: "",
@@ -103,7 +108,10 @@ export function Pricing() {
 
               <button
                 type="button"
-                onClick={() => document.getElementById("cta")?.scrollIntoView({ behavior: "smooth" })}
+                onClick={() => {
+                  localStorage.setItem("selectedPlan", p.id);
+                  navigate(`/signup?plan=${p.id}`);
+                }}
                 className={`mt-7 w-full rounded-md py-2.5 text-sm font-medium transition-colors ${
                   p.highlight
                     ? "bg-accent text-white hover:bg-accent-hover"

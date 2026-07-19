@@ -4,35 +4,57 @@ export default {
     './index.html',
     './src/**/*.{js,ts,jsx,tsx}',
   ],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        bg: {
-          DEFAULT: '#14161A',
-          panel: '#1C1F26',
-        },
-        accent: {
-          DEFAULT: '#4C5FD5',
-          hover: '#3A4BBD',
-        },
-        negative: {
-          DEFAULT: '#C0574A',
-          hover: '#A9483C',
-        },
+        background: 'var(--color-bg)',
+        border: 'var(--color-border)',
+        panel: 'var(--color-panel)',
+        
         surface: {
-          DEFAULT: '#1C1F26',
-          hover: '#23272F',
-          border: '#2D323B',
+          DEFAULT: 'var(--color-surface)',
+          hover: 'var(--color-surface-hover)',
+          border: 'var(--color-border)',
+          card: 'var(--surface-card)',
         },
+        
         content: {
-          primary: '#E4E6EA',
-          secondary: '#9CA1AA',
-          muted: '#4A4F58',
-        }
+          primary: 'var(--color-text-primary)',
+          secondary: 'var(--color-text-secondary)',
+          tertiary: 'var(--color-text-muted)',
+          muted: 'var(--color-text-muted)',
+        },
+        
+        accent: {
+          DEFAULT: 'var(--color-accent)',
+          hover: 'var(--color-accent-hover)',
+        },
+        
+        success: {
+          DEFAULT: 'var(--color-success)',
+          bg: 'var(--color-success-bg)',
+        },
+        
+        danger: {
+          DEFAULT: 'var(--color-danger)',
+          bg: 'var(--color-danger-bg)',
+        },
+        
+        negative: {
+          DEFAULT: 'var(--color-negative)',
+          hover: 'var(--color-negative-hover)',
+        },
+      },
+      borderRadius: {
+        card: 'var(--radius-card)',
+        pill: 'var(--radius-pill)',
+        sm: 'var(--radius-sm)',
+        DEFAULT: 'var(--radius-sm)',
       },
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "monospace"],
+        sans: ["var(--font-sans)"],
+        mono: ["var(--font-mono)"],
       },
     },
   },

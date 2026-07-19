@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import PixelBlast from "./PixelBlast";
 
@@ -119,20 +120,18 @@ export function Hero() {
             </p>
             
             <div className="mt-12 flex items-center gap-4">
-              <button className="bg-content-primary text-bg hover:bg-content-primary/90 font-medium px-6 py-3 rounded-md transition-colors">
-                 \ пїЅ!! пїЅ!!
-  пїЅ пїЅ! W пїЅ пїЅ!  U
-              </button>
-              <button className="bg-transparent hover:bg-surface-hover text-content-primary font-medium px-6 py-3 rounded-md border border-surface-border transition-colors">
-                  пїЅ W! U! Q!!
-  пїЅ пїЅ X U
-              </button>
+              <Link to="/signup" className="bg-[#111827] text-white hover:bg-black font-medium px-6 py-3 rounded-full transition-colors lowercase">
+                Начать бесплатно
+              </Link>
+              <a href="#workflow" className="bg-transparent hover:bg-black/5 text-[#111827] font-medium px-6 py-3 rounded-full border border-black/10 transition-colors lowercase">
+                Смотреть демо
+              </a>
             </div>
 
             {/* AI Models strip */}
             <div className="mt-10 pt-8 border-t border-surface-border">
               <div className="text-[10px] font-mono-tabular text-content-muted uppercase tracking-wider mb-3">
-                  [ ^  : "  пїЅ  R " Z 4  Z [  " : пїЅ
+                  ОТСЛЕЖИВАЕМЫЕ МОДЕЛИ ИИ
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 {["ChatGPT", "Claude", "Gemini", "Perplexity", "Grok"].map((name) => (
