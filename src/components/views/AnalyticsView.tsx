@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useBrands } from '../BrandContext';
+import { supabase } from '@/lib/supabase';
 import { ModelIcon } from '@/components/ui/ModelIcon';
 import { BrandAvatar } from '@/components/ui/BrandAvatar';
 import { 
@@ -7,7 +9,7 @@ import {
 } from 'recharts';
 import { 
   TrendingUp, TrendingDown, ExternalLink, ShieldCheck, FileText, 
-  Plus, Search, Filter, CheckCircle2, XCircle, MoreVertical
+  Plus, Search, Filter, CheckCircle2, XCircle, MoreVertical, RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -46,22 +48,149 @@ const COMPARE_SOV_DATA = [
 ];
 
 const MARKET_DATA = [
-  { id: 1, name: 'BCC', occurrences: 45, trend: 12 },
-  { id: 2, name: 'ForteBank', occurrences: 32, trend: -5 },
-  { id: 3, name: 'Jusan', occurrences: 28, trend: 8 },
+  { id: '1', name: 'BCC', occurrences: 45, trend: 12 },
+  { id: '2', name: 'ForteBank', occurrences: 32, trend: -5 },
+  { id: '3', name: 'Jusan', occurrences: 28, trend: 8 },
 ];
 
 export default function AnalyticsView() {
   const { slug } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const { brands } = useBrands();
+  
+  const currentBrand = brands.find(b => b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === slug);
+  const projectId = currentBrand?.id;
   
   const pathParts = location.pathname.split('/');
-  // Fallback to 'models' if path is just /analytics
   const activeTab = pathParts[pathParts.length - 1] === 'analytics' ? 'models' : pathParts[pathParts.length - 1];
 
   const handleTabChange = (tab: string) => {
     navigate(`/workspace/${slug}/analytics/${tab}`, { replace: true });
+  };
+
+  // States
+  const [isLoading, setIsLoading] = useState(false);
+  const [modelsData, setModelsData] = useState<any[]>(MODELS_DATA);
+  const [sourcesData, setSourcesData] = useState<any[]>(SOURCES_DATA);
+  const [promptsData, setPromptsData] = useState<any[]>(PROMPTS_DATA);
+  const [compareData, setCompareData] = useState<any[]>(COMPARE_DATA);
+  const [compareSovData, setCompareSovData] = useState<any[]>(COMPARE_SOV_DATA);
+  const [marketData, setMarketData] = useState<any[]>(MARKET_DATA);
+
+  const [onlyLosses, setOnlyLosses] = useState(false);
+  const [isAddPromptModalOpen, setIsAddPromptModalOpen] = useState(false);
+  const [isBulkMode, setIsBulkMode] = useState(false);
+  const [newPromptText, setNewPromptText] = useState('');
+  const [newPromptModels, setNewPromptModels] = useState<string[]>(['chatgpt']);
+
+  // Fetch Logic depending on active tab
+  useEffect(() => {
+    if (!projectId) return;
+
+    const fetchData = async () => {
+      setIsLoading(true);
+      try {
+        if (activeTab === 'models') {
+          // Fake aggregation for models, fallback to dbModelStats if we had it
+        } else if (activeTab === 'sources') {
+          const { data, error } = await supabase.from('citations').select('*').eq('project_id', projectId).order('frequency', { ascending: false }).limit(50);
+          if (data && data.length > 0) {
+            setSourcesData(data.map(d => ({
+              id: d.id, domain: d.domain, url: d.url, citations: d.frequency,
+              prompt: d.prompt, model: d.model, date: new Date(d.created_at).toLocaleDateString('ru-RU'),
+              own: false
+            })));
+          }
+        } else if (activeTab === 'prompts') {
+          const { data, error } = await supabase.from('tracked_prompts').select('*').eq('project_id', projectId).order('created_at', { ascending: false });
+          if (data && data.length > 0) {
+            setPromptsData(data.map(d => ({
+              id: d.id, text: d.prompt_text, models: d.ai_models || [], freq: 0,
+              lastFound: true, active: d.is_active
+            })));
+          }
+        } else if (activeTab === 'compare') {
+          // Fetch runs and aggregate
+          // Let's just fallback to mock for now if no real data
+        } else if (activeTab === 'market') {
+          // fetch missed competitors
+        }
+      } catch (err) {
+        console.warn('Fallback: DB table error for Analytics', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, [projectId, activeTab]);
+
+  const filteredCompareData = useMemo(() => {
+    if (!onlyLosses) return compareData;
+    return compareData.filter(row => row.brand === 0 || (row.comp1 > 0 && row.comp1 < row.brand));
+  }, [compareData, onlyLosses]);
+
+  // Prompt Handlers
+  const handleSavePrompt = async () => {
+    if (!newPromptText.trim()) return;
+    try {
+      if (isBulkMode) {
+        const lines = newPromptText.split('\n').map(line => line.trim()).filter(Boolean);
+        const inserts = lines.map(text => ({
+          project_id: projectId,
+          prompt_text: text,
+          ai_models: newPromptModels,
+          is_active: true
+        }));
+        await supabase.from('tracked_prompts').insert(inserts);
+      } else {
+        await supabase.from('tracked_prompts').insert({
+          project_id: projectId,
+          prompt_text: newPromptText,
+          ai_models: newPromptModels,
+          is_active: true
+        });
+      }
+      setIsAddPromptModalOpen(false);
+      setNewPromptText('');
+      // Optimistic update omitted for brevity, reload tab
+      handleTabChange('prompts');
+    } catch (err) {
+      console.warn('Fallback add prompt', err);
+      setIsAddPromptModalOpen(false);
+    }
+  };
+
+  const togglePromptStatus = async (id: any, currentStatus: boolean) => {
+    setPromptsData(prev => prev.map(p => p.id === id ? { ...p, active: !currentStatus } : p));
+    try {
+      await supabase.from('tracked_prompts').update({ is_active: !currentStatus }).eq('id', id);
+    } catch (err) {
+      console.warn('Toggle prompt fallback', err);
+    }
+  };
+
+  const deletePrompt = async (id: any) => {
+    if (!confirm('Удалить промпт?')) return;
+    setPromptsData(prev => prev.filter(p => p.id !== id));
+    try {
+      await supabase.from('tracked_prompts').delete().eq('id', id);
+    } catch (err) {
+      console.warn('Delete prompt fallback', err);
+    }
+  };
+
+  // Market Handler
+  const handleAddCompetitor = async (name: string, id: string) => {
+    try {
+      const currentComps = currentBrand?.competitors || [];
+      const updatedComps = [...currentComps, name];
+      await supabase.from('projects').update({ competitors: updatedComps }).eq('id', projectId);
+      setMarketData(prev => prev.filter(m => m.id !== id));
+    } catch (err) {
+      console.warn('Add competitor fallback', err);
+      setMarketData(prev => prev.filter(m => m.id !== id));
+    }
   };
 
   const tabs = [
@@ -95,7 +224,7 @@ export default function AnalyticsView() {
           <>
             {/* Cards Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
-              {MODELS_DATA.map(model => (
+              {modelsData.map(model => (
                 <div key={model.id} className="bg-white border border-border rounded-xl p-4 shadow-sm flex flex-col">
                   <div className="flex items-center gap-2 mb-3">
                     <ModelIcon model={model.id} size={28} />
@@ -122,7 +251,7 @@ export default function AnalyticsView() {
               <h2 className="eyebrow mb-6">сравнение sov по моделям</h2>
               <div className="h-[250px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={MODELS_DATA} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                  <BarChart data={modelsData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                     <XAxis 
                       dataKey="name" 
@@ -150,7 +279,7 @@ export default function AnalyticsView() {
                       }}
                     />
                     <Bar dataKey="sov" radius={[4, 4, 0, 0]} maxBarSize={60}>
-                      {MODELS_DATA.map((entry, index) => (
+                      {modelsData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill="#6D5FE8" />
                       ))}
                     </Bar>
@@ -176,7 +305,12 @@ export default function AnalyticsView() {
               </div>
             </div>
             
-            <div className="flex-1 overflow-auto custom-scrollbar">
+            <div className="flex-1 overflow-auto custom-scrollbar relative">
+              {isLoading && (
+                <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-20 flex items-center justify-center">
+                  <RefreshCw className="w-6 h-6 text-accent animate-spin" />
+                </div>
+              )}
               <table className="w-full text-left border-collapse">
                 <thead className="sticky top-0 bg-[#fbfbfd] border-b border-border z-10">
                   <tr>
@@ -188,7 +322,7 @@ export default function AnalyticsView() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
-                  {SOURCES_DATA.map(src => (
+                  {sourcesData.map(src => (
                     <tr key={src.id} className="hover:bg-[#fbfbfd] transition-colors">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
@@ -221,17 +355,28 @@ export default function AnalyticsView() {
 
         {/* TAB: PROMPTS */}
         {activeTab === 'prompts' && (
-          <div className="bg-white border border-border rounded-xl shadow-sm flex flex-col flex-1 min-h-0">
+          <div className="bg-white border border-border rounded-xl shadow-sm flex flex-col flex-1 min-h-0 relative">
+            {isLoading && (
+              <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-20 flex items-center justify-center">
+                <RefreshCw className="w-6 h-6 text-accent animate-spin" />
+              </div>
+            )}
             <div className="p-4 border-b border-border flex items-center justify-between gap-4">
               <div className="relative w-64 shrink-0">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-content-tertiary" />
                 <input type="text" placeholder="поиск промптов..." className="w-full h-9 pl-9 pr-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 focus:ring-accent outline-none lowercase" />
               </div>
               <div className="flex items-center gap-2">
-                <button className="h-9 px-3 flex items-center gap-2 bg-[#fbfbfd] border border-border rounded-md text-[13px] font-medium text-content-secondary hover:text-[#111827] lowercase transition-colors">
+                <button 
+                  className="h-9 px-3 flex items-center gap-2 bg-[#fbfbfd] border border-border rounded-md text-[13px] font-medium text-content-secondary hover:text-[#111827] lowercase transition-colors"
+                  onClick={() => { setIsBulkMode(true); setIsAddPromptModalOpen(true); }}
+                >
                   массовое добавление
                 </button>
-                <Button className="h-9 px-4 rounded-md lowercase font-medium text-[13px]">
+                <Button 
+                  className="h-9 px-4 rounded-md lowercase font-medium text-[13px]"
+                  onClick={() => { setIsBulkMode(false); setIsAddPromptModalOpen(true); }}
+                >
                   <Plus className="w-4 h-4 mr-1.5" /> добавить промпт
                 </Button>
               </div>
@@ -250,12 +395,12 @@ export default function AnalyticsView() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
-                  {PROMPTS_DATA.map(prompt => (
-                    <tr key={prompt.id} className="hover:bg-[#fbfbfd] transition-colors">
+                  {promptsData.map(prompt => (
+                    <tr key={prompt.id} className={`hover:bg-[#fbfbfd] transition-colors ${!prompt.active ? 'opacity-60' : ''}`}>
                       <td className="px-4 py-3 text-[13px] font-medium text-[#111827] pr-8">{prompt.text}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
-                          {prompt.models.map(m => (
+                          {prompt.models.map((m: string) => (
                             <ModelIcon key={m} model={m} size={16} />
                           ))}
                         </div>
@@ -273,13 +418,20 @@ export default function AnalyticsView() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className={`relative inline-flex h-4 w-7 cursor-pointer items-center rounded-full transition-colors ${prompt.active ? 'bg-accent' : 'bg-border'}`}>
+                        <div 
+                          className={`relative inline-flex h-4 w-7 cursor-pointer items-center rounded-full transition-colors ${prompt.active ? 'bg-accent' : 'bg-border'}`}
+                          onClick={() => togglePromptStatus(prompt.id, prompt.active)}
+                        >
                           <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${prompt.active ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <button className="text-content-tertiary hover:text-[#111827] transition-colors p-1">
-                          <MoreVertical className="w-4 h-4" />
+                        <button 
+                          className="text-content-tertiary hover:text-[#A32D2D] transition-colors p-1"
+                          onClick={() => deletePrompt(prompt.id)}
+                          title="Удалить"
+                        >
+                          <XCircle className="w-4 h-4" />
                         </button>
                       </td>
                     </tr>
@@ -292,19 +444,24 @@ export default function AnalyticsView() {
 
         {/* TAB: COMPARE */}
         {activeTab === 'compare' && (
-          <div className="flex flex-col gap-6 flex-1 min-h-0">
+          <div className="flex flex-col gap-6 flex-1 min-h-0 relative">
+            {isLoading && (
+              <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-20 flex items-center justify-center">
+                <RefreshCw className="w-6 h-6 text-accent animate-spin" />
+              </div>
+            )}
             {/* Top Chart */}
             <div className="bg-white border border-border rounded-xl p-5 shadow-sm shrink-0 h-[220px] flex flex-col">
               <h2 className="eyebrow mb-4">доля голоса: мы vs конкуренты</h2>
               <div className="flex-1 w-full min-h-0">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={COMPARE_SOV_DATA} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                  <BarChart data={compareSovData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#6B7280', fontFamily: 'monospace' }} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#6B7280', fontFamily: 'monospace' }} />
                     <Tooltip cursor={{ fill: '#f3f4f6' }} contentStyle={{ borderRadius: '8px', border: '1px solid #EDEAF5', fontSize: '12px', fontFamily: 'monospace' }} />
                     <Bar dataKey="sov" radius={[4, 4, 0, 0]} maxBarSize={50}>
-                      {COMPARE_SOV_DATA.map((entry, index) => (
+                      {compareSovData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={index === 0 ? '#6D5FE8' : '#D1D5DB'} />
                       ))}
                     </Bar>
@@ -318,7 +475,7 @@ export default function AnalyticsView() {
               <div className="p-4 border-b border-border flex items-center justify-between shrink-0">
                 <h2 className="eyebrow">матрица позиций по запросам</h2>
                 <label className="flex items-center gap-2 cursor-pointer text-[12px] font-medium text-content-secondary lowercase">
-                  <input type="checkbox" className="rounded border-border text-accent focus:ring-accent" />
+                  <input type="checkbox" checked={onlyLosses} onChange={e => setOnlyLosses(e.target.checked)} className="rounded border-border text-accent focus:ring-accent" />
                   только проигрышные промпты
                 </label>
               </div>
@@ -334,7 +491,7 @@ export default function AnalyticsView() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
-                    {COMPARE_DATA.map((row, i) => (
+                    {filteredCompareData.map((row, i) => (
                       <tr key={i} className="hover:bg-[#fbfbfd] transition-colors">
                         <td className="px-4 py-3 text-[12px] font-medium text-[#111827]">{row.query}</td>
                         <td className="px-4 py-3 text-center border-l border-border/50 bg-accent/5">
@@ -364,7 +521,12 @@ export default function AnalyticsView() {
 
         {/* TAB: MARKET */}
         {activeTab === 'market' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0 relative">
+            {isLoading && (
+              <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-20 flex items-center justify-center">
+                <RefreshCw className="w-6 h-6 text-accent animate-spin" />
+              </div>
+            )}
             {/* Top 5 Market Share */}
             <div className="lg:col-span-1 bg-white border border-border rounded-xl shadow-sm p-5 flex flex-col h-fit">
               <h2 className="eyebrow mb-4">топ-5 доминирующих брендов</h2>
@@ -397,7 +559,7 @@ export default function AnalyticsView() {
               </div>
               <div className="flex-1 overflow-auto p-2 custom-scrollbar">
                 <div className="space-y-2">
-                  {MARKET_DATA.map(comp => (
+                  {marketData.map(comp => (
                     <div key={comp.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 hover:border-border hover:bg-[#fbfbfd] transition-colors">
                       <div className="flex items-center gap-3">
                         <BrandAvatar project={{ name: comp.name }} size={32} />
@@ -413,7 +575,11 @@ export default function AnalyticsView() {
                           {comp.trend > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                           {Math.abs(comp.trend)}%
                         </div>
-                        <Button variant="outline" className="h-8 px-3 text-[11px] lowercase rounded-md bg-white">
+                        <Button 
+                          variant="outline" 
+                          className="h-8 px-3 text-[11px] lowercase rounded-md bg-white"
+                          onClick={() => handleAddCompetitor(comp.name, comp.id)}
+                        >
                           <Plus className="w-3.5 h-3.5 mr-1" /> добавить
                         </Button>
                       </div>
@@ -426,6 +592,62 @@ export default function AnalyticsView() {
         )}
 
       </div>
+
+      {/* Add Prompt Modal */}
+      {isAddPromptModalOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-border bg-[#fbfbfd]">
+              <div className="font-medium text-[#111827]">{isBulkMode ? 'Массовое добавление' : 'Добавить промпт'}</div>
+              <button className="text-content-muted hover:text-[#111827]" onClick={() => setIsAddPromptModalOpen(false)}>
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 flex flex-col gap-4">
+              <div>
+                <label className="eyebrow mb-2 block">{isBulkMode ? 'Промпты (каждый с новой строки)' : 'Текст промпта'}</label>
+                {isBulkMode ? (
+                  <textarea 
+                    value={newPromptText}
+                    onChange={e => setNewPromptText(e.target.value)}
+                    placeholder="какой лучший банк...&#10;топ банков рк..."
+                    className="w-full h-32 p-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 focus:ring-accent outline-none resize-none custom-scrollbar"
+                  />
+                ) : (
+                  <input 
+                    type="text" 
+                    value={newPromptText}
+                    onChange={e => setNewPromptText(e.target.value)}
+                    placeholder="например: какой лучший банк..." 
+                    className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 focus:ring-accent outline-none" 
+                  />
+                )}
+              </div>
+              <div>
+                <label className="eyebrow mb-2 block">Выбранные модели</label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {['chatgpt', 'claude', 'gemini', 'perplexity'].map(m => (
+                    <button
+                      key={m}
+                      className={`h-8 px-3 rounded-md text-[12px] font-medium transition-colors border ${newPromptModels.includes(m) ? 'bg-accent/10 border-accent/20 text-accent' : 'bg-white border-border text-content-secondary hover:text-[#111827]'}`}
+                      onClick={() => setNewPromptModels(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m])}
+                    >
+                      <div className="flex items-center gap-1.5 capitalize">
+                        <ModelIcon model={m} size={14} />
+                        {m}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border-t border-border bg-[#fbfbfd] flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setIsAddPromptModalOpen(false)}>Отмена</Button>
+              <Button onClick={handleSavePrompt}>Сохранить</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
