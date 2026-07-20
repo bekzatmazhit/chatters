@@ -5,12 +5,12 @@ import { supabase } from '@/lib/supabase';
 import { ModelIcon } from '@/components/ui/ModelIcon';
 import { 
   TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, 
-  AlertTriangle, Loader2, Lock, Activity
+  AlertTriangle, Loader2, Lock, Activity, Sparkles
 } from 'lucide-react';
 import { 
   LineChart, Line, AreaChart, Area, XAxis, YAxis, 
   CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
-  ComposedChart, Bar
+  ComposedChart, Bar, Legend
 } from 'recharts';
 
 export default function WorkspaceView() {
@@ -37,6 +37,7 @@ export default function WorkspaceView() {
   const [benchmark, setBenchmark] = useState<{median_sov: number, p90_sov: number} | null>(null);
   const [isGa4Connected, setIsGa4Connected] = useState(false);
   const [trafficData, setTrafficData] = useState<any[]>([]);
+  const [dbForecasts, setDbForecasts] = useState<{baseline: any[], optimistic: any[]} | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -83,6 +84,21 @@ export default function WorkspaceView() {
           ...prev,
           mentions: count || 0
         }));
+
+        // Fetch Forecasts
+        const { data: forecastData } = await supabase
+          .from('forecasts')
+          .select('*')
+          .eq('project_id', projectId)
+          .eq('horizon_days', 30) // Default horizon for UI
+          .single();
+          
+        if (forecastData) {
+          setDbForecasts({
+            baseline: forecastData.baseline_projection,
+            optimistic: forecastData.optimistic_projection
+          });
+        }
 
         // 3. Benchmarks
         if (currentBrand?.niche) {
@@ -151,39 +167,68 @@ export default function WorkspaceView() {
     fetchData();
   }, [projectId, sovPeriod]);
 
-  // Generate SOV Data with forecast (Fallback)
-  const sovData = useMemo(() => {
-    if (isDbReady && dbSovData.length > 0) return dbSovData;
+  // Generate SOV Data with forecast (Fallback/Mock)
+  const chartData = useMemo(() => {
     const data = [];
     const now = new Date();
+    
+    // Historical
+    let lastVal = 40;
     for (let i = sovPeriod; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      const val = Math.max(20, Math.min(80, 50 - (i * 0.3) + Math.sin(i / 2) * 5));
+      const val = isDbReady && dbSovData.length > 0 && dbSovData[dbSovData.length - 1 - i]
+        ? dbSovData[dbSovData.length - 1 - i].value 
+        : Math.max(20, Math.min(80, 50 - (i * 0.3) + Math.sin(i / 2) * 5));
+        
+      lastVal = val;
+      
       data.push({ 
         date: d.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' }), 
         value: Math.round(val),
-        isForecast: false
+        baseline: i === 0 ? Math.round(val) : null, // Connect points
+        optimistic: i === 0 ? Math.round(val) : null
       });
     }
     
-    // Add forecast
-    if (sovPeriod >= 14) {
-      const lastVal = data[data.length - 1].value;
-      for (let i = 1; i <= 5; i++) {
-        const d = new Date(now);
-        d.setDate(d.getDate() + i);
-        data.push({
-          date: d.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' }), 
-          value: Math.round(lastVal - i * 1.5), // Simulate stable drop
-          isForecast: true
-        });
+    // Forecast (Future 30 days)
+    for (let i = 1; i <= 30; i++) {
+      const d = new Date(now);
+      d.setDate(d.getDate() + i);
+      const dateStr = d.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' });
+      
+      let baseVal, optVal;
+      
+      if (dbForecasts) {
+        // Use DB forecasts if available
+        baseVal = dbForecasts.baseline[i-1]?.value;
+        optVal = dbForecasts.optimistic[i-1]?.value;
+      } else {
+        // Mock Forecast
+        baseVal = lastVal - (i * 0.2); // slight degrade
+        optVal = lastVal + (i * 0.4);  // steady growth
       }
+
+      data.push({
+        date: dateStr,
+        value: null,
+        baseline: Math.round(baseVal),
+        optimistic: Math.round(optVal)
+      });
     }
     return data;
-  }, [sovPeriod, isDbReady, dbSovData]);
+  }, [sovPeriod, isDbReady, dbSovData, dbForecasts]);
 
-  const isStableDrop = sovPeriod >= 14 && sovData.length > 6 && sovData[sovData.length - 1].value < sovData[sovData.length - 6].value;
+  // Metrics for UI Annotations
+  const forecastMetrics = useMemo(() => {
+    const currentSov = chartData.find(d => d.value !== null && d.baseline !== null)?.value || 0;
+    const lastPoint = chartData[chartData.length - 1];
+    const diff = (lastPoint.optimistic || 0) - currentSov;
+    return {
+      potentialGrowth: Math.max(0, diff).toFixed(1),
+      isGrowing: diff > 0
+    };
+  }, [chartData]);
 
   // Generate Sentiment Data (Fallback)
   const sentimentData = useMemo(() => {
@@ -320,9 +365,9 @@ export default function WorkspaceView() {
               </div>
             </div>
             
-            <div className="h-[240px] w-full">
+            <div className="h-[240px] w-full mt-4">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={sovData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                <LineChart data={chartData} margin={{ top: 5, right: 20, left: -25, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                   <XAxis 
                     dataKey="date" 
@@ -338,29 +383,62 @@ export default function WorkspaceView() {
                   />
                   <Tooltip content={<CustomTooltip />} />
                   
-                  {sovPeriod >= 14 && (
-                    <ReferenceLine x={sovData[sovData.length - 6]?.date} stroke="#9CA3AF" strokeDasharray="3 3" />
-                  )}
-
                   <Line 
                     type="monotone" 
                     dataKey="value"
-                    name="SOV"
+                    name="История SOV"
                     stroke="#6D5FE8"
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4, strokeWidth: 0 }}
+                    connectNulls={true}
+                  />
+                  
+                  <Line 
+                    type="monotone" 
+                    dataKey="baseline"
+                    name="Прогноз (текущий тренд)"
+                    stroke="#9CA3AF"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={false}
+                    activeDot={false}
+                    connectNulls={true}
+                  />
+
+                  <Line 
+                    type="monotone" 
+                    dataKey="optimistic"
+                    name="С выполнением плана"
+                    stroke="#0F6E56"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={false}
+                    activeDot={false}
+                    connectNulls={true}
                   />
                 </LineChart>
               </ResponsiveContainer>
             </div>
 
-            {isStableDrop && (
-              <div className="mt-4 flex items-start gap-2 bg-[#FCEBEB] border border-red-100 p-3 rounded-lg text-[#A32D2D] text-[13px] leading-snug">
-                <AlertTriangle className="w-4 h-4 shrink-0 text-[#A32D2D] mt-0.5" />
-                <span>Замечено устойчивое падение SOV в выдаче. Рекомендуется проанализировать источники конкурентов и обновить базу фактов.</span>
+            {/* Custom Legend for Forecast */}
+            <div className="flex items-center justify-center gap-6 mt-4 pt-4 border-t border-border">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#111827] lowercase">
+                <div className="w-4 h-0.5 bg-[#6D5FE8] rounded-full"></div> история
               </div>
-            )}
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-content-secondary lowercase">
+                <div className="w-4 h-0.5 bg-[#9CA3AF] border-t-2 border-dashed border-[#9CA3AF]"></div> текущий тренд
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#0F6E56] lowercase">
+                <div className="w-4 h-0.5 bg-[#0F6E56] border-t-2 border-dashed border-[#0F6E56]"></div> с рекомендациями
+              </div>
+            </div>
+
+            {/* Forecast Insight Annotation */}
+            <div className="mt-4 flex items-start gap-2 bg-[#fbfbfd] border border-border p-3 rounded-lg text-content-secondary text-[12px] leading-snug font-medium">
+              <Sparkles className="w-4 h-4 shrink-0 text-accent mt-0.5" />
+              <span>Выполнение открытых задач может добавить <strong className="text-accent">~{forecastMetrics.potentialGrowth} п.п. SOV</strong> за 30 дней (ориентировочно).</span>
+            </div>
           </div>
 
           {/* 4. Mini Models Cards Row */}
