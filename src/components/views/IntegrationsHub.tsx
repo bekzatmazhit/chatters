@@ -47,6 +47,14 @@ const INTEGRATIONS = [
     color: 'text-orange-600 bg-orange-100',
     status: 'soon',
   },
+  {
+    id: 'google-analytics',
+    name: 'Google Analytics 4',
+    desc: 'Анализ корреляции AI-упоминаний с реальным трафиком на сайт.',
+    category: 'аналитика',
+    color: 'text-yellow-600 bg-yellow-100',
+    status: 'available',
+  }
 ];
 
 export default function IntegrationsHub() {
