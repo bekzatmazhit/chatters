@@ -6,7 +6,7 @@ import { ModelIcon } from '@/components/ui/ModelIcon';
 import { 
   Bell, Activity, AlertCircle, Clock, Edit2, Plus, 
   Search, Filter, CheckCircle2, ChevronDown, ChevronRight,
-  TrendingDown, FileText, Zap, ShieldAlert
+  TrendingDown, FileText, Zap, ShieldAlert, GitCommit, Trash2, ArrowRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -44,6 +44,22 @@ const MOCK_TRIGGERS = [
   }
 ];
 
+const MOCK_PLAYBOOKS = [
+  {
+    id: 'p1',
+    is_playbook: true,
+    name: 'Эскалация при обвале SOV',
+    trigger_condition: { metric: 'SOV', operator: '<', value: '25', model: 'chatgpt' },
+    lastTriggered: 'Вчера 12:00',
+    active: true,
+    steps: [
+      { id: 's1', action_type: 'notify_slack', action_config: { channel: '#urgent-alerts' } },
+      { id: 's2', action_type: 'create_jira_ticket', action_config: { project: 'SEO', issue_type: 'Bug' } },
+      { id: 's3', action_type: 'generate_brief', action_config: {} }
+    ]
+  }
+];
+
 const MOCK_ALERTS = [
   { id: 1, trigger: 'Падение SOV ниже 30%', time: '10 минут назад', status: 'new' },
   { id: 2, trigger: 'Всплеск упоминаний в ChatGPT', time: 'Вчера 15:45', status: 'viewed' },
@@ -74,13 +90,14 @@ export default function MonitoringView() {
   };
 
   const tabs = [
-    { id: 'triggers', label: 'триггеры' },
+    { id: 'triggers', label: 'триггеры и плейбуки' },
     { id: 'alerts', label: 'алерты' },
     { id: 'timeline', label: 'хронология' }
   ];
 
   // State
   const [triggers, setTriggers] = useState<any[]>(MOCK_TRIGGERS);
+  const [playbooks, setPlaybooks] = useState<any[]>(MOCK_PLAYBOOKS);
   const [alerts, setAlerts] = useState<any[]>(MOCK_ALERTS);
   const [timelineEvents, setTimelineEvents] = useState<any[]>(MOCK_TIMELINE);
   const [expandedTimeline, setExpandedTimeline] = useState<number | null>(null);
@@ -88,7 +105,12 @@ export default function MonitoringView() {
   // Triggers Modal State
   const [isTriggerModalOpen, setIsTriggerModalOpen] = useState(false);
   const [editingTriggerId, setEditingTriggerId] = useState<string | null>(null);
+  
+  // Trigger / Playbook Form State
+  const [isPlaybookMode, setIsPlaybookMode] = useState(false);
   const [newTrigger, setNewTrigger] = useState({ metric: 'SOV', operator: '<', value: '', channel: 'Telegram', model: '' });
+  const [newPlaybookName, setNewPlaybookName] = useState('');
+  const [playbookSteps, setPlaybookSteps] = useState<any[]>([]);
 
   // Fetch Logic
   useEffect(() => {
@@ -96,9 +118,21 @@ export default function MonitoringView() {
     const fetchData = async () => {
       try {
         if (activeTab === 'triggers') {
-          const { data, error } = await supabase.from('triggers').select('*').eq('project_id', projectId).order('created_at', { ascending: false });
-          if (error) throw error;
-          if (data && data.length > 0) setTriggers(data);
+          // Fetch simple triggers
+          const { data: triggersData, error: triggersError } = await supabase.from('triggers').select('*').eq('project_id', projectId).order('created_at', { ascending: false });
+          if (triggersError) throw triggersError;
+          if (triggersData && triggersData.length > 0) setTriggers(triggersData);
+
+          // Fetch playbooks
+          const { data: playbooksData, error: pbError } = await supabase.from('playbooks').select('*, playbook_steps(*)').eq('project_id', projectId).order('created_at', { ascending: false });
+          if (pbError) throw pbError;
+          if (playbooksData && playbooksData.length > 0) {
+            setPlaybooks(playbooksData.map((pb: any) => ({
+              ...pb,
+              is_playbook: true,
+              steps: pb.playbook_steps?.sort((a: any, b: any) => a.step_order - b.step_order) || []
+            })));
+          }
         } else if (activeTab === 'alerts') {
           const { data, error } = await supabase.from('alerts').select('*, triggers(metric, operator, value)').eq('project_id', projectId).order('created_at', { ascending: false });
           if (error) throw error;
@@ -130,41 +164,101 @@ export default function MonitoringView() {
     fetchData();
   }, [projectId, activeTab]);
 
-  const handleToggleTrigger = async (id: string, currentActive: boolean) => {
+  const handleToggleTrigger = async (id: string, currentActive: boolean, isPlaybook: boolean = false) => {
     try {
-      const { error } = await supabase.from('triggers').update({ is_active: !currentActive }).eq('id', id);
+      const table = isPlaybook ? 'playbooks' : 'triggers';
+      const { error } = await supabase.from(table).update({ is_active: !currentActive }).eq('id', id);
       if (error) throw error;
-      setTriggers(prev => prev.map(t => t.id === id ? { ...t, is_active: !currentActive, active: !currentActive } : t));
+      
+      if (isPlaybook) {
+        setPlaybooks(prev => prev.map(t => t.id === id ? { ...t, is_active: !currentActive, active: !currentActive } : t));
+      } else {
+        setTriggers(prev => prev.map(t => t.id === id ? { ...t, is_active: !currentActive, active: !currentActive } : t));
+      }
     } catch (err) {
-      console.warn('Fallback: toggle trigger locally', err);
-      setTriggers(prev => prev.map(t => t.id === id ? { ...t, is_active: !currentActive, active: !currentActive } : t));
+      console.warn('Fallback: toggle locally', err);
+      if (isPlaybook) {
+        setPlaybooks(prev => prev.map(t => t.id === id ? { ...t, is_active: !currentActive, active: !currentActive } : t));
+      } else {
+        setTriggers(prev => prev.map(t => t.id === id ? { ...t, is_active: !currentActive, active: !currentActive } : t));
+      }
     }
   };
 
   const handleSaveTrigger = async () => {
     try {
-      if (editingTriggerId) {
-        const { error } = await supabase.from('triggers').update(newTrigger).eq('id', editingTriggerId);
-        if (error) throw error;
-        setTriggers(prev => prev.map(t => t.id === editingTriggerId ? { ...t, ...newTrigger } : t));
+      if (isPlaybookMode) {
+        // PLAYBOOK SAVE
+        const condition = { metric: newTrigger.metric, operator: newTrigger.operator, value: newTrigger.value, model: newTrigger.model };
+        if (editingTriggerId) {
+          // Mock update for now
+          setPlaybooks(prev => prev.map(p => p.id === editingTriggerId ? { 
+            ...p, name: newPlaybookName, trigger_condition: condition, steps: playbookSteps 
+          } : p));
+        } else {
+          const { data: pbData, error: pbError } = await supabase.from('playbooks').insert({
+            project_id: projectId,
+            name: newPlaybookName,
+            trigger_condition: condition,
+            is_active: true
+          }).select().single();
+          if (pbError) throw pbError;
+          
+          if (playbookSteps.length > 0) {
+            const stepsToInsert = playbookSteps.map((step, idx) => ({
+              playbook_id: pbData.id,
+              step_order: idx + 1,
+              action_type: step.action_type,
+              action_config: step.action_config || {}
+            }));
+            await supabase.from('playbook_steps').insert(stepsToInsert);
+          }
+          setPlaybooks(prev => [{ ...pbData, is_playbook: true, steps: playbookSteps }, ...prev]);
+        }
       } else {
-        const { data, error } = await supabase.from('triggers').insert({
-          project_id: projectId,
-          ...newTrigger,
-          is_active: true
-        }).select().single();
-        if (error) throw error;
-        setTriggers(prev => [data, ...prev]);
+        // SIMPLE TRIGGER SAVE
+        if (editingTriggerId) {
+          const { error } = await supabase.from('triggers').update(newTrigger).eq('id', editingTriggerId);
+          if (error) throw error;
+          setTriggers(prev => prev.map(t => t.id === editingTriggerId ? { ...t, ...newTrigger } : t));
+        } else {
+          const { data, error } = await supabase.from('triggers').insert({
+            project_id: projectId,
+            ...newTrigger,
+            is_active: true
+          }).select().single();
+          if (error) throw error;
+          setTriggers(prev => [data, ...prev]);
+        }
       }
       setIsTriggerModalOpen(false);
     } catch (err) {
-      console.warn('Fallback: save trigger locally', err);
-      if (editingTriggerId) {
-        setTriggers(prev => prev.map(t => t.id === editingTriggerId ? { ...t, ...newTrigger } : t));
+      console.warn('Fallback: save locally', err);
+      if (isPlaybookMode) {
+        if (editingTriggerId) {
+          setPlaybooks(prev => prev.map(p => p.id === editingTriggerId ? { ...p, name: newPlaybookName, steps: playbookSteps } : p));
+        } else {
+          setPlaybooks(prev => [{ id: Date.now().toString(), is_playbook: true, name: newPlaybookName, trigger_condition: newTrigger, steps: playbookSteps, active: true, lastTriggered: 'только что' }, ...prev]);
+        }
       } else {
-        setTriggers(prev => [{ id: Date.now().toString(), ...newTrigger, is_active: true, active: true, last_triggered: 'только что' }, ...prev]);
+        if (editingTriggerId) {
+          setTriggers(prev => prev.map(t => t.id === editingTriggerId ? { ...t, ...newTrigger } : t));
+        } else {
+          setTriggers(prev => [{ id: Date.now().toString(), ...newTrigger, is_active: true, active: true, last_triggered: 'только что' }, ...prev]);
+        }
       }
       setIsTriggerModalOpen(false);
+    }
+  };
+
+  const getActionName = (type: string) => {
+    switch (type) {
+      case 'notify_slack': return 'Slack';
+      case 'notify_telegram': return 'Telegram';
+      case 'create_jira_ticket': return 'Создать Jira-тикет';
+      case 'generate_brief': return 'Сгенерировать Бриф';
+      case 'assign_task': return 'Назначить задачу';
+      default: return type;
     }
   };
 
@@ -211,78 +305,113 @@ export default function MonitoringView() {
         {/* TAB: TRIGGERS */}
         {activeTab === 'triggers' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {triggers.map(trigger => (
-              <div key={trigger.id} className="bg-white border border-border rounded-xl shadow-sm p-5 flex flex-col hover:border-border/80 transition-colors group relative">
-                {/* Header: Status and Edit */}
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    {trigger.active !== undefined ? trigger.active : trigger.is_active ? (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium font-mono text-[#0F6E56] bg-[#E1F5EE] lowercase">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#0F6E56]"></span> активен
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium font-mono text-content-secondary bg-[#fbfbfd] border border-border lowercase">
-                        <span className="w-1.5 h-1.5 rounded-full bg-content-muted"></span> остановлен
+            {/* Unified list of Rules */}
+            {[...playbooks, ...triggers].map(rule => {
+              const condition = rule.is_playbook ? rule.trigger_condition : rule;
+              return (
+                <div key={`${rule.is_playbook ? 'pb' : 'tr'}_${rule.id}`} className="bg-white border border-border rounded-xl shadow-sm p-5 flex flex-col hover:border-border/80 transition-colors group relative">
+                  {/* Header: Status and Edit */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      {rule.active !== undefined ? rule.active : rule.is_active ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium font-mono text-[#0F6E56] bg-[#E1F5EE] lowercase">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#0F6E56]"></span> активен
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium font-mono text-content-secondary bg-[#fbfbfd] border border-border lowercase">
+                          <span className="w-1.5 h-1.5 rounded-full bg-content-muted"></span> остановлен
+                        </span>
+                      )}
+                      {rule.is_playbook && (
+                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold text-accent bg-accent/10 uppercase tracking-wide">плейбук</span>
+                      )}
+                    </div>
+                    <button 
+                      className="text-content-tertiary hover:text-accent transition-colors p-1" 
+                      title="Редактировать"
+                      onClick={() => {
+                        setEditingTriggerId(rule.id.toString());
+                        setIsPlaybookMode(!!rule.is_playbook);
+                        if (rule.is_playbook) {
+                          setNewPlaybookName(rule.name || '');
+                          setNewTrigger({ metric: condition.metric, operator: condition.operator, value: condition.value, channel: 'Telegram', model: condition.model || '' });
+                          setPlaybookSteps(rule.steps || []);
+                        } else {
+                          setNewTrigger({
+                            metric: condition.metric,
+                            operator: condition.operator,
+                            value: condition.value,
+                            channel: condition.channel,
+                            model: condition.model || ''
+                          });
+                        }
+                        setIsTriggerModalOpen(true);
+                      }}
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Condition Text */}
+                  <div className="text-[14px] text-[#111827] leading-relaxed mb-4 font-medium">
+                    {rule.is_playbook && <div className="font-semibold mb-2">{rule.name}</div>}
+                    <span className="text-content-secondary mr-1">если</span>
+                    <span className="bg-[#fbfbfd] border border-border px-1.5 py-0.5 rounded mx-1">{condition.metric}</span>
+                    {condition.model && (
+                      <span className="inline-flex items-center gap-1 bg-[#fbfbfd] border border-border px-1.5 py-0.5 rounded mx-1">
+                        в <ModelIcon model={condition.model} size={14} className="ml-0.5" /> <span className="capitalize">{condition.model}</span>
                       </span>
                     )}
+                    <span className="text-accent font-bold mx-1">{condition.operator}</span>
+                    <span className="font-mono bg-[#fbfbfd] border border-border px-1.5 py-0.5 rounded mx-1">{condition.value}</span>
+                    {!rule.is_playbook && (
+                      <>
+                        <span className="text-content-secondary mx-1">→</span>
+                        <span className="font-bold border-b border-dashed border-content-tertiary mx-1">{rule.channel}</span>
+                      </>
+                    )}
                   </div>
-                  <button 
-                    className="text-content-tertiary hover:text-accent transition-colors p-1" 
-                    title="Редактировать"
-                    onClick={() => {
-                      setEditingTriggerId(trigger.id.toString());
-                      setNewTrigger({
-                        metric: trigger.metric,
-                        operator: trigger.operator,
-                        value: trigger.value,
-                        channel: trigger.channel,
-                        model: trigger.model || ''
-                      });
-                      setIsTriggerModalOpen(true);
-                    }}
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                </div>
 
-                {/* Condition Text */}
-                <div className="text-[14px] text-[#111827] leading-relaxed mb-6 font-medium flex-1">
-                  <span className="text-content-secondary mr-1">если</span>
-                  <span className="bg-[#fbfbfd] border border-border px-1.5 py-0.5 rounded mx-1">{trigger.metric}</span>
-                  {trigger.model && (
-                    <span className="inline-flex items-center gap-1 bg-[#fbfbfd] border border-border px-1.5 py-0.5 rounded mx-1">
-                      в <ModelIcon model={trigger.model} size={14} className="ml-0.5" /> <span className="capitalize">{trigger.model}</span>
-                    </span>
+                  {/* Playbook Steps */}
+                  {rule.is_playbook && (
+                    <div className="flex-1 mb-6 flex flex-col gap-1.5">
+                      <div className="text-[11px] font-mono text-content-secondary lowercase mb-1">Выполнить:</div>
+                      {rule.steps.map((step: any, idx: number) => (
+                        <div key={step.id || idx} className="flex items-center gap-2 text-[12px]">
+                          <div className="w-4 h-4 rounded-full bg-border flex items-center justify-center text-[9px] font-bold text-content-secondary shrink-0">{idx + 1}</div>
+                          <span className="font-medium text-[#111827]">{getActionName(step.action_type)}</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                  <span className="text-accent font-bold mx-1">{trigger.operator}</span>
-                  <span className="font-mono bg-[#fbfbfd] border border-border px-1.5 py-0.5 rounded mx-1">{trigger.value}</span>
-                  <span className="text-content-secondary mx-1">→ отправить в</span>
-                  <span className="font-bold border-b border-dashed border-content-tertiary mx-1">{trigger.channel}</span>
-                </div>
 
-                {/* Footer: Date and Toggle */}
-                <div className="flex items-center justify-between pt-4 border-t border-border mt-auto">
-                  <div className="flex items-center gap-1.5 text-[11px] text-content-tertiary font-mono">
-                    <Clock className="w-3.5 h-3.5" />
-                    {trigger.last_triggered ? `сработал: ${new Date(trigger.last_triggered).toLocaleString()}` : trigger.lastTriggered || 'никогда'}
+                  {/* Footer: Date and Toggle */}
+                  <div className="flex items-center justify-between pt-4 border-t border-border mt-auto">
+                    <div className="flex items-center gap-1.5 text-[11px] text-content-tertiary font-mono">
+                      <Clock className="w-3.5 h-3.5" />
+                      {rule.last_triggered ? `сработал: ${new Date(rule.last_triggered).toLocaleString()}` : rule.lastTriggered || 'никогда'}
+                    </div>
+                    
+                    {/* Custom Toggle Switch */}
+                    <button 
+                      onClick={() => handleToggleTrigger(rule.id.toString(), rule.active !== undefined ? rule.active : rule.is_active, rule.is_playbook)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${(rule.active !== undefined ? rule.active : rule.is_active) ? 'bg-accent' : 'bg-border'}`}
+                    >
+                      <span className="sr-only">Toggle active</span>
+                      <span className={`pointer-events-none absolute left-0.5 inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${(rule.active !== undefined ? rule.active : rule.is_active) ? 'translate-x-4' : 'translate-x-0'}`} />
+                    </button>
                   </div>
-                  
-                  {/* Custom Toggle Switch */}
-                  <button 
-                    onClick={() => handleToggleTrigger(trigger.id.toString(), trigger.active !== undefined ? trigger.active : trigger.is_active)}
-                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${(trigger.active !== undefined ? trigger.active : trigger.is_active) ? 'bg-accent' : 'bg-border'}`}
-                  >
-                    <span className="sr-only">Toggle active</span>
-                    <span className={`pointer-events-none absolute left-0.5 inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${(trigger.active !== undefined ? trigger.active : trigger.is_active) ? 'translate-x-4' : 'translate-x-0'}`} />
-                  </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {/* Create New Trigger Card */}
             <button 
               onClick={() => {
                 setEditingTriggerId(null);
+                setIsPlaybookMode(false);
+                setNewPlaybookName('');
+                setPlaybookSteps([]);
                 setNewTrigger({ metric: 'SOV', operator: '<', value: '', channel: 'Telegram', model: '' });
                 setIsTriggerModalOpen(true);
               }}
@@ -408,77 +537,166 @@ export default function MonitoringView() {
       {/* Create / Edit Trigger Modal */}
       {isTriggerModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between p-4 border-b border-border bg-[#fbfbfd]">
-              <div className="font-medium text-[#111827]">{editingTriggerId ? 'Редактировать триггер' : 'Создать триггер'}</div>
+              <div className="font-medium text-[#111827]">{editingTriggerId ? 'Редактировать правило' : 'Создать новое правило'}</div>
             </div>
-            <div className="p-5 flex flex-col gap-4">
-              <div>
-                <label className="eyebrow mb-2 block">Метрика</label>
-                <select 
-                  className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 outline-none"
-                  value={newTrigger.metric}
-                  onChange={e => setNewTrigger({...newTrigger, metric: e.target.value})}
-                >
-                  <option value="SOV">SOV</option>
-                  <option value="Упоминания">Упоминания</option>
-                  <option value="AIO-Скор">AIO-Скор</option>
-                  <option value="Галлюцинации">Галлюцинации</option>
-                </select>
-              </div>
-              <div className="flex gap-4">
-                <div className="w-1/3">
-                  <label className="eyebrow mb-2 block">Оператор</label>
-                  <select 
-                    className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 outline-none"
-                    value={newTrigger.operator}
-                    onChange={e => setNewTrigger({...newTrigger, operator: e.target.value})}
+            
+            <div className="p-5 overflow-y-auto flex-1 flex flex-col gap-5 custom-scrollbar">
+              
+              {/* Type Toggle */}
+              {!editingTriggerId && (
+                <div className="flex items-center gap-2 bg-[#fbfbfd] p-1 rounded-lg border border-border">
+                  <button 
+                    onClick={() => setIsPlaybookMode(false)}
+                    className={`flex-1 py-1.5 text-[12px] font-medium rounded-md transition-colors ${!isPlaybookMode ? 'bg-white shadow-sm border border-border/50 text-[#111827]' : 'text-content-secondary hover:text-[#111827]'}`}
                   >
-                    <option value="<">&lt; Меньше</option>
-                    <option value=">">&gt; Больше</option>
-                    <option value="=">= Равно</option>
-                  </select>
+                    Простое уведомление
+                  </button>
+                  <button 
+                    onClick={() => setIsPlaybookMode(true)}
+                    className={`flex-1 py-1.5 text-[12px] font-medium rounded-md transition-colors flex items-center justify-center gap-1.5 ${isPlaybookMode ? 'bg-white shadow-sm border border-border/50 text-[#111827]' : 'text-content-secondary hover:text-[#111827]'}`}
+                  >
+                    <GitCommit className="w-3.5 h-3.5" /> Плейбук
+                  </button>
                 </div>
-                <div className="flex-1">
-                  <label className="eyebrow mb-2 block">Значение</label>
+              )}
+
+              {isPlaybookMode && (
+                <div>
+                  <label className="eyebrow mb-2 block">Название плейбука</label>
                   <input 
                     type="text" 
-                    placeholder="Например: 30% или 100"
+                    placeholder="Например: Эскалация при обвале SOV"
                     className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 outline-none"
-                    value={newTrigger.value}
-                    onChange={e => setNewTrigger({...newTrigger, value: e.target.value})}
+                    value={newPlaybookName}
+                    onChange={e => setNewPlaybookName(e.target.value)}
                   />
                 </div>
+              )}
+
+              <div className="p-4 rounded-xl bg-[#fbfbfd] border border-border space-y-4">
+                <div className="eyebrow border-b border-border pb-2 mb-2">Условие (триггер)</div>
+                <div>
+                  <label className="eyebrow mb-2 block">Метрика</label>
+                  <select 
+                    className="w-full h-9 px-3 text-[13px] bg-white border border-border rounded-md focus:border-accent focus:ring-1 outline-none"
+                    value={newTrigger.metric}
+                    onChange={e => setNewTrigger({...newTrigger, metric: e.target.value})}
+                  >
+                    <option value="SOV">SOV</option>
+                    <option value="Упоминания">Упоминания</option>
+                    <option value="AIO-Скор">AIO-Скор</option>
+                    <option value="Галлюцинации">Галлюцинации</option>
+                  </select>
+                </div>
+                <div className="flex gap-4">
+                  <div className="w-1/3">
+                    <label className="eyebrow mb-2 block">Оператор</label>
+                    <select 
+                      className="w-full h-9 px-3 text-[13px] bg-white border border-border rounded-md focus:border-accent focus:ring-1 outline-none"
+                      value={newTrigger.operator}
+                      onChange={e => setNewTrigger({...newTrigger, operator: e.target.value})}
+                    >
+                      <option value="<">&lt; Меньше</option>
+                      <option value=">">&gt; Больше</option>
+                      <option value="=">= Равно</option>
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <label className="eyebrow mb-2 block">Значение</label>
+                    <input 
+                      type="text" 
+                      placeholder="Например: 30% или 100"
+                      className="w-full h-9 px-3 text-[13px] bg-white border border-border rounded-md focus:border-accent focus:ring-1 outline-none"
+                      value={newTrigger.value}
+                      onChange={e => setNewTrigger({...newTrigger, value: e.target.value})}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="eyebrow mb-2 block">Модель (опционально)</label>
+                  <select 
+                    className="w-full h-9 px-3 text-[13px] bg-white border border-border rounded-md focus:border-accent focus:ring-1 outline-none"
+                    value={newTrigger.model}
+                    onChange={e => setNewTrigger({...newTrigger, model: e.target.value})}
+                  >
+                    <option value="">Все модели</option>
+                    <option value="chatgpt">ChatGPT</option>
+                    <option value="claude">Claude</option>
+                    <option value="gemini">Gemini</option>
+                  </select>
+                </div>
               </div>
-              <div>
-                <label className="eyebrow mb-2 block">Модель (опционально)</label>
-                <select 
-                  className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 outline-none"
-                  value={newTrigger.model}
-                  onChange={e => setNewTrigger({...newTrigger, model: e.target.value})}
-                >
-                  <option value="">Все модели</option>
-                  <option value="chatgpt">ChatGPT</option>
-                  <option value="claude">Claude</option>
-                  <option value="gemini">Gemini</option>
-                </select>
-              </div>
-              <div>
-                <label className="eyebrow mb-2 block">Отправить в</label>
-                <select 
-                  className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 outline-none"
-                  value={newTrigger.channel}
-                  onChange={e => setNewTrigger({...newTrigger, channel: e.target.value})}
-                >
-                  <option value="Telegram">Telegram</option>
-                  <option value="Slack">Slack</option>
-                  <option value="Email">Email</option>
-                </select>
-              </div>
+
+              {!isPlaybookMode ? (
+                <div>
+                  <label className="eyebrow mb-2 block">Отправить в</label>
+                  <select 
+                    className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 outline-none"
+                    value={newTrigger.channel}
+                    onChange={e => setNewTrigger({...newTrigger, channel: e.target.value})}
+                  >
+                    <option value="Telegram">Telegram</option>
+                    <option value="Slack">Slack</option>
+                    <option value="Email">Email</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="eyebrow flex items-center justify-between">
+                    <span>Шаги плейбука</span>
+                    <span className="font-mono bg-border/50 px-1.5 py-0.5 rounded text-content-secondary">{playbookSteps.length} шагов</span>
+                  </div>
+                  
+                  {playbookSteps.length > 0 ? (
+                    <div className="space-y-2">
+                      {playbookSteps.map((step, idx) => (
+                        <div key={idx} className="flex items-center gap-2 bg-[#fbfbfd] border border-border p-2 rounded-lg group">
+                          <div className="w-5 h-5 rounded bg-border text-content-secondary text-[10px] font-bold flex items-center justify-center shrink-0">
+                            {idx + 1}
+                          </div>
+                          <div className="flex-1 text-[13px] font-medium text-[#111827]">
+                            {getActionName(step.action_type)}
+                          </div>
+                          <button 
+                            className="p-1.5 text-content-tertiary hover:text-red-500 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100"
+                            onClick={() => setPlaybookSteps(prev => prev.filter((_, i) => i !== idx))}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-[12px] text-content-tertiary italic text-center py-4">Нет шагов. Плейбук ничего не сделает.</div>
+                  )}
+
+                  <div className="pt-2">
+                    <select 
+                      className="w-full h-9 px-3 text-[13px] text-accent font-medium bg-accent/5 border border-dashed border-accent/30 rounded-md outline-none focus:border-accent"
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setPlaybookSteps(prev => [...prev, { action_type: e.target.value, action_config: {} }]);
+                        }
+                      }}
+                    >
+                      <option value="">+ Добавить шаг...</option>
+                      <option value="notify_slack">Отправить в Slack</option>
+                      <option value="notify_telegram">Отправить в Telegram</option>
+                      <option value="create_jira_ticket">Создать Jira-тикет</option>
+                      <option value="generate_brief">Сгенерировать Бриф</option>
+                      <option value="assign_task">Назначить задачу</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
             </div>
-            <div className="p-4 border-t border-border bg-[#fbfbfd] flex justify-end gap-3">
+            <div className="p-4 border-t border-border bg-[#fbfbfd] flex justify-end gap-3 shrink-0">
               <Button variant="outline" onClick={() => setIsTriggerModalOpen(false)}>Отмена</Button>
-              <Button onClick={handleSaveTrigger}>Сохранить</Button>
+              <Button onClick={handleSaveTrigger} disabled={isPlaybookMode && !newPlaybookName}>Сохранить</Button>
             </div>
           </div>
         </div>
