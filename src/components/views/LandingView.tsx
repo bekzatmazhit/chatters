@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { DemoDashboardPreview } from '../landing/DemoDashboardPreview';
 import { DemoQueryTerminal } from '../landing/DemoQueryTerminal';
 import { LandingNavbar } from '../landing/LandingNavbar';
+import { PublicAuditSection } from '../landing/PublicAuditSection';
 import PixelBlast from '../effects/PixelBlast';
 
 const SectionLabel = ({ children, className }: { children: React.ReactNode; className?: string }) => (
@@ -309,31 +310,7 @@ export default function LandingView() {
           </div>
         </section>
 
-        <section data-navbar-section data-navbar-theme="dark" className="dark bg-[#0b0d12] py-20 text-center md:py-24">
-          <div className="mx-auto max-w-2xl px-5 md:px-8">
-            <SectionLabel className="mb-5 text-white/45">05 / первый отчет</SectionLabel>
-            <h2 className="text-[36px] font-semibold leading-[1.1] tracking-tight text-white md:text-[56px]">
-              Проверьте, что AI уже говорит о вашем бренде.
-            </h2>
-            <p className="mx-auto mt-6 max-w-xl text-[16px] leading-7 text-white/80">
-              Оставьте рабочую почту, и мы соберем демо-отчет по вашей категории:
-              упоминания, конкуренты, источники и первые рекомендации.
-            </p>
-            <form className="mx-auto mt-9 flex max-w-lg flex-col gap-3 sm:flex-row">
-              <input
-                type="email"
-                placeholder="you@company.com"
-                className="h-12 min-w-0 flex-1 rounded-md border border-white/12 bg-white/[0.04] px-4 text-[14px] text-white outline-none transition placeholder:text-white/32 focus:border-white/34"
-              />
-              <Button className="btn-label h-12 rounded-md bg-white px-6 text-[#0b0d12] hover:bg-white/90">
-                Получить отчет
-              </Button>
-            </form>
-            <div className="mt-4 font-mono text-[11px] uppercase tracking-[0.12em] text-white/60">
-              без карты · ответ в течение 24 часов
-            </div>
-          </div>
-        </section>
+        <PublicAuditSection />
       </main>
 
       <footer className="light border-t border-border bg-white">
