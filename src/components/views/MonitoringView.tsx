@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useBrands } from '../BrandContext';
+import { supabase } from '@/lib/supabase';
 import { ModelIcon } from '@/components/ui/ModelIcon';
 import { 
   Bell, Activity, AlertCircle, Clock, Edit2, Plus, 
@@ -59,6 +61,10 @@ export default function MonitoringView() {
   const { slug } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const { brands } = useBrands();
+  
+  const currentBrand = brands.find(b => b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === slug);
+  const projectId = currentBrand?.id;
   
   const pathParts = location.pathname.split('/');
   const activeTab = pathParts[pathParts.length - 1] === 'monitoring' ? 'triggers' : pathParts[pathParts.length - 1];
@@ -74,11 +80,104 @@ export default function MonitoringView() {
   ];
 
   // State
-  const [triggers, setTriggers] = useState(MOCK_TRIGGERS);
+  const [triggers, setTriggers] = useState<any[]>(MOCK_TRIGGERS);
+  const [alerts, setAlerts] = useState<any[]>(MOCK_ALERTS);
+  const [timelineEvents, setTimelineEvents] = useState<any[]>(MOCK_TIMELINE);
   const [expandedTimeline, setExpandedTimeline] = useState<number | null>(null);
+  
+  // Triggers Modal State
+  const [isTriggerModalOpen, setIsTriggerModalOpen] = useState(false);
+  const [editingTriggerId, setEditingTriggerId] = useState<string | null>(null);
+  const [newTrigger, setNewTrigger] = useState({ metric: 'SOV', operator: '<', value: '', channel: 'Telegram', model: '' });
 
-  const toggleTrigger = (id: number) => {
-    setTriggers(prev => prev.map(t => t.id === id ? { ...t, active: !t.active } : t));
+  // Fetch Logic
+  useEffect(() => {
+    if (!projectId) return;
+    const fetchData = async () => {
+      try {
+        if (activeTab === 'triggers') {
+          const { data, error } = await supabase.from('triggers').select('*').eq('project_id', projectId).order('created_at', { ascending: false });
+          if (error) throw error;
+          if (data && data.length > 0) setTriggers(data);
+        } else if (activeTab === 'alerts') {
+          const { data, error } = await supabase.from('alerts').select('*, triggers(metric, operator, value)').eq('project_id', projectId).order('created_at', { ascending: false });
+          if (error) throw error;
+          if (data && data.length > 0) setAlerts(data.map((a: any) => ({
+            id: a.id,
+            trigger: a.triggers ? `${a.triggers.metric} ${a.triggers.operator} ${a.triggers.value}` : a.message,
+            time: new Date(a.created_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }),
+            status: a.status
+          })));
+        } else if (activeTab === 'timeline') {
+          const { data, error } = await supabase.from('activity_events').select('*').eq('project_id', projectId).order('created_at', { ascending: false });
+          if (error) throw error;
+          if (data && data.length > 0) setTimelineEvents(data.map((e: any) => ({
+            id: e.id,
+            type: e.event_type,
+            title: e.title,
+            desc: e.description,
+            time: new Date(e.created_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }),
+            icon: e.event_type === 'hallucination' ? AlertCircle : e.event_type === 'trigger' ? Zap : Activity,
+            color: e.event_type === 'hallucination' ? 'text-orange-500' : 'text-blue-500',
+            bg: e.event_type === 'hallucination' ? 'bg-orange-100' : 'bg-blue-100',
+            details: e.details
+          })));
+        }
+      } catch (err) {
+        console.warn('Fallback to mock data for', activeTab, err);
+      }
+    };
+    fetchData();
+  }, [projectId, activeTab]);
+
+  const handleToggleTrigger = async (id: string, currentActive: boolean) => {
+    try {
+      const { error } = await supabase.from('triggers').update({ is_active: !currentActive }).eq('id', id);
+      if (error) throw error;
+      setTriggers(prev => prev.map(t => t.id === id ? { ...t, is_active: !currentActive, active: !currentActive } : t));
+    } catch (err) {
+      console.warn('Fallback: toggle trigger locally', err);
+      setTriggers(prev => prev.map(t => t.id === id ? { ...t, is_active: !currentActive, active: !currentActive } : t));
+    }
+  };
+
+  const handleSaveTrigger = async () => {
+    try {
+      if (editingTriggerId) {
+        const { error } = await supabase.from('triggers').update(newTrigger).eq('id', editingTriggerId);
+        if (error) throw error;
+        setTriggers(prev => prev.map(t => t.id === editingTriggerId ? { ...t, ...newTrigger } : t));
+      } else {
+        const { data, error } = await supabase.from('triggers').insert({
+          project_id: projectId,
+          ...newTrigger,
+          is_active: true
+        }).select().single();
+        if (error) throw error;
+        setTriggers(prev => [data, ...prev]);
+      }
+      setIsTriggerModalOpen(false);
+    } catch (err) {
+      console.warn('Fallback: save trigger locally', err);
+      if (editingTriggerId) {
+        setTriggers(prev => prev.map(t => t.id === editingTriggerId ? { ...t, ...newTrigger } : t));
+      } else {
+        setTriggers(prev => [{ id: Date.now().toString(), ...newTrigger, is_active: true, active: true, last_triggered: 'только что' }, ...prev]);
+      }
+      setIsTriggerModalOpen(false);
+    }
+  };
+
+  const handleAlertStatusCycle = async (id: string, currentStatus: string) => {
+    const nextStatus = currentStatus === 'new' ? 'viewed' : currentStatus === 'viewed' ? 'resolved' : 'new';
+    try {
+      const { error } = await supabase.from('alerts').update({ status: nextStatus }).eq('id', id);
+      if (error) throw error;
+      setAlerts(prev => prev.map(a => a.id === id ? { ...a, status: nextStatus } : a));
+    } catch (err) {
+      console.warn('Fallback: cycle alert status locally', err);
+      setAlerts(prev => prev.map(a => a.id === id ? { ...a, status: nextStatus } : a));
+    }
   };
 
   const getAlertStatusBadge = (status: string) => {
@@ -117,7 +216,7 @@ export default function MonitoringView() {
                 {/* Header: Status and Edit */}
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    {trigger.active ? (
+                    {trigger.active !== undefined ? trigger.active : trigger.is_active ? (
                       <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium font-mono text-[#0F6E56] bg-[#E1F5EE] lowercase">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#0F6E56]"></span> активен
                       </span>
@@ -127,7 +226,21 @@ export default function MonitoringView() {
                       </span>
                     )}
                   </div>
-                  <button className="text-content-tertiary hover:text-accent transition-colors p-1" title="Редактировать">
+                  <button 
+                    className="text-content-tertiary hover:text-accent transition-colors p-1" 
+                    title="Редактировать"
+                    onClick={() => {
+                      setEditingTriggerId(trigger.id.toString());
+                      setNewTrigger({
+                        metric: trigger.metric,
+                        operator: trigger.operator,
+                        value: trigger.value,
+                        channel: trigger.channel,
+                        model: trigger.model || ''
+                      });
+                      setIsTriggerModalOpen(true);
+                    }}
+                  >
                     <Edit2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -151,23 +264,30 @@ export default function MonitoringView() {
                 <div className="flex items-center justify-between pt-4 border-t border-border mt-auto">
                   <div className="flex items-center gap-1.5 text-[11px] text-content-tertiary font-mono">
                     <Clock className="w-3.5 h-3.5" />
-                    {trigger.lastTriggered.includes('20') ? `сработал: ${trigger.lastTriggered}` : trigger.lastTriggered}
+                    {trigger.last_triggered ? `сработал: ${new Date(trigger.last_triggered).toLocaleString()}` : trigger.lastTriggered || 'никогда'}
                   </div>
                   
                   {/* Custom Toggle Switch */}
                   <button 
-                    onClick={() => toggleTrigger(trigger.id)}
-                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${trigger.active ? 'bg-accent' : 'bg-border'}`}
+                    onClick={() => handleToggleTrigger(trigger.id.toString(), trigger.active !== undefined ? trigger.active : trigger.is_active)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${(trigger.active !== undefined ? trigger.active : trigger.is_active) ? 'bg-accent' : 'bg-border'}`}
                   >
                     <span className="sr-only">Toggle active</span>
-                    <span className={`pointer-events-none absolute left-0.5 inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${trigger.active ? 'translate-x-4' : 'translate-x-0'}`} />
+                    <span className={`pointer-events-none absolute left-0.5 inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${(trigger.active !== undefined ? trigger.active : trigger.is_active) ? 'translate-x-4' : 'translate-x-0'}`} />
                   </button>
                 </div>
               </div>
             ))}
 
             {/* Create New Trigger Card */}
-            <button className="bg-[#fbfbfd] border-2 border-dashed border-border rounded-xl p-5 flex flex-col items-center justify-center min-h-[220px] text-content-muted hover:text-accent hover:border-accent/50 hover:bg-accent/5 transition-colors group">
+            <button 
+              onClick={() => {
+                setEditingTriggerId(null);
+                setNewTrigger({ metric: 'SOV', operator: '<', value: '', channel: 'Telegram', model: '' });
+                setIsTriggerModalOpen(true);
+              }}
+              className="bg-[#fbfbfd] border-2 border-dashed border-border rounded-xl p-5 flex flex-col items-center justify-center min-h-[220px] text-content-muted hover:text-accent hover:border-accent/50 hover:bg-accent/5 transition-colors group"
+            >
               <div className="w-10 h-10 rounded-full bg-white border border-border flex items-center justify-center mb-3 shadow-sm group-hover:scale-110 transition-transform">
                 <Plus className="w-5 h-5" />
               </div>
@@ -199,7 +319,7 @@ export default function MonitoringView() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
-                  {MOCK_ALERTS.map(alert => (
+                  {alerts.map(alert => (
                     <tr key={alert.id} className="hover:bg-[#fbfbfd] transition-colors group">
                       <td className="px-4 py-4 text-[13px] font-medium text-[#111827]">
                         <div className="flex items-center gap-2.5">
@@ -210,7 +330,11 @@ export default function MonitoringView() {
                       <td className="px-4 py-4 font-mono text-[12px] text-content-secondary">{alert.time}</td>
                       <td className="px-4 py-4">{getAlertStatusBadge(alert.status)}</td>
                       <td className="px-4 py-4 text-right">
-                        <Button variant="outline" className="h-8 px-3 text-[11px] lowercase rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button 
+                          variant="outline" 
+                          onClick={() => handleAlertStatusCycle(alert.id.toString(), alert.status)}
+                          className="h-8 px-3 text-[11px] lowercase rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
                           сменить статус
                         </Button>
                       </td>
@@ -236,7 +360,7 @@ export default function MonitoringView() {
 
             <div className="flex-1 overflow-auto custom-scrollbar p-6">
               <div className="relative border-l-2 border-border/60 ml-4 space-y-8 pb-8">
-                {MOCK_TIMELINE.map(event => (
+                {timelineEvents.map(event => (
                   <div key={event.id} className="relative pl-8">
                     {/* Timeline Node */}
                     <div className={`absolute -left-[17px] top-1 w-8 h-8 rounded-full border-4 border-white ${event.bg} flex items-center justify-center shadow-sm`}>
@@ -280,6 +404,86 @@ export default function MonitoringView() {
         )}
 
       </div>
+
+      {/* Create / Edit Trigger Modal */}
+      {isTriggerModalOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-border bg-[#fbfbfd]">
+              <div className="font-medium text-[#111827]">{editingTriggerId ? 'Редактировать триггер' : 'Создать триггер'}</div>
+            </div>
+            <div className="p-5 flex flex-col gap-4">
+              <div>
+                <label className="eyebrow mb-2 block">Метрика</label>
+                <select 
+                  className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 outline-none"
+                  value={newTrigger.metric}
+                  onChange={e => setNewTrigger({...newTrigger, metric: e.target.value})}
+                >
+                  <option value="SOV">SOV</option>
+                  <option value="Упоминания">Упоминания</option>
+                  <option value="AIO-Скор">AIO-Скор</option>
+                  <option value="Галлюцинации">Галлюцинации</option>
+                </select>
+              </div>
+              <div className="flex gap-4">
+                <div className="w-1/3">
+                  <label className="eyebrow mb-2 block">Оператор</label>
+                  <select 
+                    className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 outline-none"
+                    value={newTrigger.operator}
+                    onChange={e => setNewTrigger({...newTrigger, operator: e.target.value})}
+                  >
+                    <option value="<">&lt; Меньше</option>
+                    <option value=">">&gt; Больше</option>
+                    <option value="=">= Равно</option>
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="eyebrow mb-2 block">Значение</label>
+                  <input 
+                    type="text" 
+                    placeholder="Например: 30% или 100"
+                    className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 outline-none"
+                    value={newTrigger.value}
+                    onChange={e => setNewTrigger({...newTrigger, value: e.target.value})}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="eyebrow mb-2 block">Модель (опционально)</label>
+                <select 
+                  className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 outline-none"
+                  value={newTrigger.model}
+                  onChange={e => setNewTrigger({...newTrigger, model: e.target.value})}
+                >
+                  <option value="">Все модели</option>
+                  <option value="chatgpt">ChatGPT</option>
+                  <option value="claude">Claude</option>
+                  <option value="gemini">Gemini</option>
+                </select>
+              </div>
+              <div>
+                <label className="eyebrow mb-2 block">Отправить в</label>
+                <select 
+                  className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 outline-none"
+                  value={newTrigger.channel}
+                  onChange={e => setNewTrigger({...newTrigger, channel: e.target.value})}
+                >
+                  <option value="Telegram">Telegram</option>
+                  <option value="Slack">Slack</option>
+                  <option value="Email">Email</option>
+                </select>
+              </div>
+            </div>
+            <div className="p-4 border-t border-border bg-[#fbfbfd] flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setIsTriggerModalOpen(false)}>Отмена</Button>
+              <Button onClick={handleSaveTrigger}>Сохранить</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
