@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { AccountSelectorModal } from '../auth/AccountSelectorModal';
 
 const navItems = [
+  { label: 'Аудит', href: '/audit' },
   { label: 'Как работает', href: '#workflow' },
   { label: 'Тарифы', href: '#pricing' },
   { label: 'Ресерч', href: '/research' },

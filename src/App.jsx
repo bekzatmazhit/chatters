@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { BrandProvider } from './components/BrandContext';
 import LandingView from './components/views/LandingView';
+import PublicAuditView from './components/views/PublicAuditView';
 import WorkspaceHubView from './components/views/WorkspaceHubView';
 import DesignSystemView from './components/views/DesignSystemView';
 import LoginView from './components/auth/LoginView';
@@ -27,6 +28,7 @@ function App() {
         <div className="bg-background min-h-screen text-content-primary">
           <Routes>
             <Route path="/" element={<LandingView />} />
+            <Route path="/audit" element={<PublicAuditView />} />
             <Route path="/workspace" element={<WorkspaceHubView />} />
             <Route path="/sandbox" element={<DesignSystemView />} />
             <Route path="/login" element={<LoginView />} />
