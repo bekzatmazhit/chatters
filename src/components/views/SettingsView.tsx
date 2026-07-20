@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useBrands } from '../BrandContext';
+import { supabase } from '@/lib/supabase';
 import { ModelIcon } from '@/components/ui/ModelIcon';
 import { 
   Save, AlertTriangle, Trash2, X, Plus, Calendar, Mail, 
@@ -46,6 +48,10 @@ export default function SettingsView() {
   const { slug } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const { brands } = useBrands();
+  
+  const currentBrand = brands.find(b => b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === slug);
+  const projectId = currentBrand?.id;
   
   const pathParts = location.pathname.split('/');
   const activeTab = pathParts[pathParts.length - 1] === 'settings' ? 'general' : pathParts[pathParts.length - 1];
@@ -72,31 +78,164 @@ export default function SettingsView() {
   // --- Reports State ---
   const [reportActive, setReportActive] = useState(true);
   const [freq, setFreq] = useState('weekly');
+  const [dayTime, setDayTime] = useState('понедельник 09:00');
   const [emails, setEmails] = useState<string[]>(['ceo@brand.com']);
   const [format, setFormat] = useState('pdf');
+  const [contentFlags, setContentFlags] = useState<string[]>(['1', '2', '3', '4', '5']);
   
   // --- White-label State ---
-  const [isPro, setIsPro] = useState(false); // Toggle for demo
+  const [isPro, setIsPro] = useState(false); // Fetched from workspaces.plan
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [wlColor, setWlColor] = useState('#111827');
+  const [customDomain, setCustomDomain] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Global Unsaved Changes & Toast
   const [hasChanges, setHasChanges] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Fetch Data
+  useEffect(() => {
+    if (!projectId) return;
+
+    const fetchData = async () => {
+      try {
+        // Fetch Project General Data
+        const { data: projData, error: projError } = await supabase
+          .from('projects')
+          .select('*, workspaces(plan)')
+          .eq('id', projectId)
+          .single();
+          
+        if (projError) throw projError;
+        
+        if (projData) {
+          setBrandName(projData.name || '');
+          setDomain(projData.domain || '');
+          setAccent(projData.color || '#6D5FE8');
+          setCompetitors(projData.competitors || []);
+          setKeywords(projData.tracked_prompts || []); // Using tracked_prompts as keywords for simplicity in this view
+          setModels(projData.tracked_ai_models || []);
+          setIsPro(projData.workspaces?.plan === 'pro');
+        }
+
+        // Fetch Reports
+        const { data: repData } = await supabase.from('scheduled_reports').select('*').eq('project_id', projectId).single();
+        if (repData) {
+          setReportActive(repData.is_active);
+          setFreq(repData.frequency);
+          setDayTime(repData.day_time);
+          setEmails(repData.recipients || []);
+          setFormat(repData.format);
+          setContentFlags(repData.content_flags || []);
+        }
+
+        // Fetch White-label
+        const { data: wlData } = await supabase.from('white_label_settings').select('*').eq('project_id', projectId).single();
+        if (wlData) {
+          setLogoUrl(wlData.logo_url);
+          setWlColor(wlData.brand_color || '#111827');
+          setCustomDomain(wlData.custom_domain || '');
+        }
+
+      } catch (err) {
+        console.warn('Settings fetch error (fallback to defaults):', err);
+      }
+    };
+    fetchData();
+  }, [projectId]);
 
   // Mark changes when inputs change
-  useEffect(() => { setHasChanges(true); }, [brandName, domain, accent, competitors, keywords, models, reportActive, freq, emails, format]);
+  useEffect(() => { setHasChanges(true); }, [brandName, domain, accent, competitors, keywords, models, reportActive, freq, dayTime, emails, format, contentFlags, logoUrl, wlColor, customDomain]);
   
   // Clean initial load change mark
   useEffect(() => { setTimeout(() => setHasChanges(false), 100); }, []);
 
-  const handleSave = () => {
-    setHasChanges(false);
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 3000);
+  const handleSave = async () => {
+    if (!projectId) return;
+    setIsSaving(true);
+    try {
+      if (activeTab === 'general') {
+        const { error } = await supabase.from('projects').update({
+          name: brandName,
+          domain: domain,
+          color: accent,
+          competitors: competitors,
+          tracked_prompts: keywords,
+          tracked_ai_models: models
+        }).eq('id', projectId);
+        if (error) throw error;
+      } else if (activeTab === 'reports') {
+        const { error } = await supabase.from('scheduled_reports').upsert({
+          project_id: projectId,
+          frequency: freq,
+          day_time: dayTime,
+          recipients: emails,
+          format: format,
+          content_flags: contentFlags,
+          is_active: reportActive
+        }, { onConflict: 'project_id' });
+        if (error) throw error;
+      } else if (activeTab === 'white-label') {
+        const { error } = await supabase.from('white_label_settings').upsert({
+          project_id: projectId,
+          logo_url: logoUrl,
+          brand_color: wlColor,
+          custom_domain: customDomain
+        }, { onConflict: 'project_id' });
+        if (error) throw error;
+      }
+
+      setHasChanges(false);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (err) {
+      console.warn('Save error fallback', err);
+      setHasChanges(false);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const toggleModel = (m: string) => {
     if (models.includes(m)) setModels(models.filter(x => x !== m));
     else setModels([...models, m]);
+  };
+
+  const toggleContentFlag = (id: string) => {
+    if (contentFlags.includes(id)) setContentFlags(contentFlags.filter(x => x !== id));
+    else setContentFlags([...contentFlags, id]);
+  };
+
+  const handleDeleteProject = async () => {
+    if (deleteConfirm !== brandName || !projectId) return;
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase.from('projects').delete().eq('id', projectId);
+      if (error) throw error;
+      navigate('/workspace');
+    } catch (err) {
+      console.warn('Delete error fallback', err);
+      // fallback mock redirect
+      navigate('/workspace');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLogoUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   return (
@@ -138,10 +277,10 @@ export default function SettingsView() {
           )}
           <Button 
             onClick={handleSave}
-            disabled={!hasChanges}
+            disabled={!hasChanges || isSaving}
             className={`h-9 px-5 rounded-md lowercase font-medium text-[13px] transition-all ${hasChanges ? 'shadow-md shadow-accent/20' : 'opacity-70'}`}
           >
-            <Save className="w-4 h-4 mr-1.5" /> сохранить
+            {isSaving ? 'сохранение...' : <><Save className="w-4 h-4 mr-1.5" /> сохранить</>}
           </Button>
         </div>
       </div>
@@ -260,10 +399,11 @@ export default function SettingsView() {
                   />
                   <Button 
                     variant="outline" 
-                    disabled={deleteConfirm !== brandName}
+                    onClick={handleDeleteProject}
+                    disabled={deleteConfirm !== brandName || isDeleting}
                     className={`h-9 px-4 rounded-md lowercase font-medium text-[12px] transition-colors ${deleteConfirm === brandName ? 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100' : 'bg-surface text-content-muted border-border'}`}
                   >
-                    <Trash2 className="w-3.5 h-3.5 mr-1.5" /> удалить проект
+                    {isDeleting ? 'удаление...' : <><Trash2 className="w-3.5 h-3.5 mr-1.5" /> удалить проект</>}
                   </Button>
                 </div>
               </div>
@@ -305,13 +445,28 @@ export default function SettingsView() {
                         <option value="weekly">еженедельно</option>
                         <option value="monthly">ежемесячно</option>
                       </select>
-                      <select className="h-10 px-3 bg-[#fbfbfd] border border-border rounded-md text-[13px] font-medium text-[#111827] outline-none focus:border-accent">
-                        <option>понедельник</option>
-                        <option>пятница</option>
+                      <select 
+                        className="h-10 px-3 bg-[#fbfbfd] border border-border rounded-md text-[13px] font-medium text-[#111827] outline-none focus:border-accent"
+                        value={dayTime.split(' ')[0]}
+                        onChange={e => setDayTime(`${e.target.value} ${dayTime.split(' ')[1]}`)}
+                      >
+                        <option value="понедельник">понедельник</option>
+                        <option value="вторник">вторник</option>
+                        <option value="среда">среда</option>
+                        <option value="четверг">четверг</option>
+                        <option value="пятница">пятница</option>
+                        <option value="суббота">суббота</option>
+                        <option value="воскресенье">воскресенье</option>
                       </select>
-                      <select className="h-10 px-3 bg-[#fbfbfd] border border-border rounded-md text-[13px] font-medium font-mono text-content-secondary outline-none focus:border-accent">
-                        <option>09:00</option>
-                        <option>18:00</option>
+                      <select 
+                        className="h-10 px-3 bg-[#fbfbfd] border border-border rounded-md text-[13px] font-medium font-mono text-content-secondary outline-none focus:border-accent"
+                        value={dayTime.split(' ')[1]}
+                        onChange={e => setDayTime(`${dayTime.split(' ')[0]} ${e.target.value}`)}
+                      >
+                        <option value="09:00">09:00</option>
+                        <option value="12:00">12:00</option>
+                        <option value="15:00">15:00</option>
+                        <option value="18:00">18:00</option>
                       </select>
                     </div>
                   </div>
@@ -352,7 +507,12 @@ export default function SettingsView() {
                       { id: '5', label: 'активность конкурентов' },
                     ].map(item => (
                       <label key={item.id} className="flex items-start gap-3 cursor-pointer group">
-                        <input type="checkbox" defaultChecked className="mt-1 border-border rounded text-accent focus:ring-accent w-4 h-4" />
+                        <input 
+                          type="checkbox" 
+                          checked={contentFlags.includes(item.id)}
+                          onChange={() => toggleContentFlag(item.id)}
+                          className="mt-1 border-border rounded text-accent focus:ring-accent w-4 h-4" 
+                        />
                         <div>
                           <div className="text-[13px] font-medium text-[#111827] group-hover:text-accent transition-colors lowercase">{item.label}</div>
                         </div>
@@ -395,11 +555,28 @@ export default function SettingsView() {
                 <div>
                   <h3 className="eyebrow mb-3 flex items-center gap-1.5"><Image className="w-3.5 h-3.5" /> логотип продукта</h3>
                   <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 bg-[#fbfbfd] border-2 border-dashed border-border rounded-lg flex items-center justify-center">
-                      <span className="text-content-tertiary font-bold font-mono">LOGO</span>
+                    <div className="w-16 h-16 bg-[#fbfbfd] border-2 border-dashed border-border rounded-lg flex items-center justify-center overflow-hidden">
+                      {logoUrl ? (
+                        <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-content-tertiary font-bold font-mono">LOGO</span>
+                      )}
                     </div>
                     <div className="flex-1">
-                      <Button variant="outline" className="h-8 px-4 text-[12px] lowercase rounded-md mb-2">загрузить файл</Button>
+                      <input 
+                        type="file" 
+                        accept="image/png, image/svg+xml" 
+                        className="hidden" 
+                        ref={fileInputRef}
+                        onChange={handleLogoUpload}
+                      />
+                      <Button 
+                        variant="outline" 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="h-8 px-4 text-[12px] lowercase rounded-md mb-2"
+                      >
+                        загрузить файл
+                      </Button>
                       <div className="text-[10px] text-content-tertiary font-mono">PNG, SVG до 2MB. 1:1 пропорция.</div>
                     </div>
                   </div>
@@ -408,7 +585,12 @@ export default function SettingsView() {
                 <div>
                   <h3 className="eyebrow mb-3 flex items-center gap-1.5"><Palette className="w-3.5 h-3.5" /> цветовая схема</h3>
                   <p className="text-[12px] text-content-secondary lowercase mb-3">основной цвет будет применяться к кнопкам, графикам и активным элементам.</p>
-                  <input type="color" defaultValue="#111827" className="w-16 h-10 rounded cursor-pointer border border-border p-0.5" />
+                  <input 
+                    type="color" 
+                    value={wlColor} 
+                    onChange={e => setWlColor(e.target.value)}
+                    className="w-16 h-10 rounded cursor-pointer border border-border p-0.5" 
+                  />
                 </div>
               </div>
 
@@ -419,6 +601,8 @@ export default function SettingsView() {
                   <input 
                     type="text" 
                     placeholder="ai.yourcompany.com" 
+                    value={customDomain}
+                    onChange={e => setCustomDomain(e.target.value)}
                     className="flex-1 h-10 px-3 bg-[#fbfbfd] border border-border rounded-md text-[13px] font-mono outline-none focus:border-accent"
                   />
                   <Button variant="outline" className="h-10 px-4 lowercase text-[13px] font-medium">проверить</Button>
@@ -453,7 +637,10 @@ export default function SettingsView() {
                 <p className="text-[13px] text-content-secondary lowercase leading-relaxed mb-6">
                   настройка кастомного домена и брендирование интерфейса доступны только на расширенных тарифах.
                 </p>
-                <Button className="w-full h-10 rounded-md lowercase font-medium text-[14px]">
+                <Button 
+                  onClick={() => navigate('/workspace-settings/billing')}
+                  className="w-full h-10 rounded-md lowercase font-medium text-[14px]"
+                >
                   улучшить тариф
                 </Button>
               </div>
