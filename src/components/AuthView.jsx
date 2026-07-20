@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Cpu, Lock, Globe } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 export default function AuthView({ onBack }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -27,7 +28,7 @@ export default function AuthView({ onBack }) {
           password,
         });
         if (error) throw error;
-        alert('Регистрация успешна! Теперь вы можете войти.');
+        toast({ title: 'Регистрация успешна!', description: 'Теперь вы можете войти.' });
         setIsLogin(true);
       }
     } catch (err) {

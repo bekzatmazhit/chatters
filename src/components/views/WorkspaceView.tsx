@@ -507,7 +507,8 @@ export default function WorkspaceView() {
             </div>
           </div>
 
-          {/* 4. Traffic Integrations (Advanced Feature) */}
+          {/* 4. Traffic Integrations (Advanced Feature) — temporarily hidden */}
+          {false && (
           <div className="bg-white border border-border rounded-xl shadow-sm p-5 h-[324px] flex flex-col">
             <div className="flex items-center gap-2 mb-6 shrink-0">
               <h2 className="eyebrow m-0">видимость &rarr; трафик</h2>
@@ -552,6 +553,7 @@ export default function WorkspaceView() {
               </div>
             )}
           </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             

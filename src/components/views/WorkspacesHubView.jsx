@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useBrands } from '../BrandContext';
 import { useTheme } from '../ThemeContext';
+import { BrandAvatar } from '@/components/ui/BrandAvatar';
 import { 
   Plus, Star, Activity, FileText, Zap, TrendingUp, ChevronRight, Download, BarChart2,
   Video, PlaySquare, Search, Moon, Sun, Bell, Settings, Users, CreditCard, LogOut,
@@ -66,13 +67,20 @@ export default function WorkspacesHubView({ onQuickAction }) {
       return (
         <div className="bg-surface p-3 rounded-lg border border-border shadow-lg">
           <p className="text-sm font-medium text-content-primary mb-2">{label}</p>
-          {payload.map((entry, index) => (
-            <div key={index} className="flex items-center gap-2 text-sm">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
-              <span className="text-content-secondary">{entry.name}:</span>
-              <span className="font-bold text-content-primary">{entry.value}%</span>
-            </div>
-          ))}
+          {payload.map((entry, index) => {
+            const brand = brands.find(b => b.name === entry.name);
+            return (
+              <div key={index} className="flex items-center gap-2 text-sm">
+                {brand ? (
+                  <BrandAvatar project={brand} size={16} className="shrink-0" />
+                ) : (
+                  <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: entry.color }} />
+                )}
+                <span className="text-content-secondary">{entry.name}:</span>
+                <span className="font-bold text-content-primary">{entry.value}%</span>
+              </div>
+            );
+          })}
         </div>
       );
     }

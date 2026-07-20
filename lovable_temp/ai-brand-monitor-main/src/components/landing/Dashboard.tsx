@@ -1,31 +1,33 @@
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n";
+import AILogo from "@/components/AILogo";
+import BrandLogo from "@/components/BrandLogo";
 
 export function Dashboard() {
   const { t } = useI18n();
 
   const SHARE = [
-    { name: t("dash.yourBrand"), share: 34, color: "var(--indigo)", you: true },
-    { name: `${t("dash.competitor")} A`, share: 26, color: "oklch(0.55 0.02 260)" },
-    { name: `${t("dash.competitor")} B`, share: 18, color: "oklch(0.65 0.02 260)" },
-    { name: `${t("dash.competitor")} C`, share: 12, color: "oklch(0.75 0.015 260)" },
-    { name: t("dash.others"), share: 10, color: "oklch(0.85 0.01 260)" },
+    { name: t("dash.yourBrand"), share: 34, color: "var(--indigo)", you: true, domain: "chatters.ai" },
+    { name: `${t("dash.competitor")} A`, share: 26, color: "oklch(0.55 0.02 260)", domain: "mixpanel.com" },
+    { name: `${t("dash.competitor")} B`, share: 18, color: "oklch(0.65 0.02 260)", domain: "amplitude.com" },
+    { name: `${t("dash.competitor")} C`, share: 12, color: "oklch(0.75 0.015 260)", domain: "heap.io" },
+    { name: t("dash.others"), share: 10, color: "oklch(0.85 0.01 260)", domain: undefined },
   ];
 
   const RUNS = [
-    { query: t("dash.run1"), mentioned: true, position: 1, sentiment: 0.78, sources: 4, model: "gpt-4o" },
-    { query: t("dash.run2"), mentioned: true, position: 2, sentiment: 0.51, sources: 3, model: "claude-3.5" },
-    { query: t("dash.run3"), mentioned: true, position: 1, sentiment: 0.9, sources: 5, model: "perplexity" },
-    { query: t("dash.run4"), mentioned: false, position: null, sentiment: 0, sources: 0, model: "gemini-2" },
-    { query: t("dash.run5"), mentioned: true, position: 3, sentiment: 0.22, sources: 6, model: "gpt-4o" },
-    { query: t("dash.run6"), mentioned: false, position: null, sentiment: 0, sources: 0, model: "claude-3.5" },
+    { query: t("dash.run1"), mentioned: true,  position: 1,    sentiment: 0.78, sources: 4, model: "gpt-4o"    },
+    { query: t("dash.run2"), mentioned: true,  position: 2,    sentiment: 0.51, sources: 3, model: "claude-3.5" },
+    { query: t("dash.run3"), mentioned: true,  position: 1,    sentiment: 0.9,  sources: 5, model: "perplexity" },
+    { query: t("dash.run4"), mentioned: false, position: null, sentiment: 0,    sources: 0, model: "gemini-2"   },
+    { query: t("dash.run5"), mentioned: true,  position: 3,    sentiment: 0.22, sources: 6, model: "gpt-4o"    },
+    { query: t("dash.run6"), mentioned: false, position: null, sentiment: 0,    sources: 0, model: "claude-3.5" },
   ];
 
   const SOURCE_GAP = [
-    { domain: "producthunt.com", citations: 42, note: t("dash.gap.note.chatgpt_perplexity") },
-    { domain: "news.ycombinator.com", citations: 31, note: t("dash.gap.note.claude_perplexity") },
-    { domain: "reddit.com/r/marketing", citations: 28, note: t("dash.gap.note.all") },
-    { domain: "g2.com/categories/seo", citations: 24, note: t("dash.gap.note.chatgpt_gemini") },
+    { domain: "producthunt.com",       citations: 42, models: ["gpt-4o", "perplexity"] },
+    { domain: "news.ycombinator.com",  citations: 31, models: ["claude-3.5", "perplexity"] },
+    { domain: "reddit.com/r/marketing",citations: 28, models: ["gpt-4o", "claude-3.5", "gemini-2", "perplexity"] },
+    { domain: "g2.com/categories/seo", citations: 24, models: ["gpt-4o", "gemini-2"] },
   ];
 
   return (
@@ -61,6 +63,8 @@ export function Dashboard() {
   );
 }
 
+// ─── Panel wrapper ────────────────────────────────────────────────────────────
+
 function Panel({
   title,
   subtitle,
@@ -83,7 +87,9 @@ function Panel({
   );
 }
 
-type Brand = { name: string; share: number; color: string; you?: boolean };
+// ─── Share of Voice ───────────────────────────────────────────────────────────
+
+type Brand = { name: string; share: number; color: string; you?: boolean; domain?: string };
 
 function ShareOfVoice({ items }: { items: Brand[] }) {
   const [hover, setHover] = useState<number | null>(null);
@@ -102,6 +108,7 @@ function ShareOfVoice({ items }: { items: Brand[] }) {
 
   return (
     <div ref={ref}>
+      {/* Stacked bar */}
       <div className="flex h-14 w-full rounded-md overflow-hidden border border-border">
         {items.map((b, i) => (
           <div
@@ -120,18 +127,22 @@ function ShareOfVoice({ items }: { items: Brand[] }) {
                 {b.share}%
               </span>
             )}
+            {/* Tooltip with brand logo */}
             {hover === i && (
-              <div className="absolute -top-11 left-1/2 -translate-x-1/2 whitespace-nowrap bg-graphite text-white text-xs px-2.5 py-1.5 rounded-md font-mono-tabular shadow-lg z-10">
+              <div className="absolute -top-12 left-1/2 -translate-x-1/2 whitespace-nowrap bg-graphite text-white text-xs px-2.5 py-1.5 rounded-md font-mono-tabular shadow-lg z-10 flex items-center gap-1.5">
+                <BrandLogo name={b.name} domain={b.domain} size={14} />
                 {b.name} · {b.share}%
               </div>
             )}
           </div>
         ))}
       </div>
+
+      {/* Legend with brand logos */}
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs">
         {items.map((b) => (
           <div key={b.name} className="flex items-center gap-2 text-muted-foreground">
-            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: b.color }} />
+            <BrandLogo name={b.name} domain={b.domain} size={14} />
             <span className={b.you ? "text-foreground font-medium" : ""}>{b.name}</span>
           </div>
         ))}
@@ -139,6 +150,8 @@ function ShareOfVoice({ items }: { items: Brand[] }) {
     </div>
   );
 }
+
+// ─── Runs Table ───────────────────────────────────────────────────────────────
 
 type Run = {
   query: string;
@@ -168,7 +181,13 @@ function RunsTable({ runs }: { runs: Run[] }) {
           {runs.map((r, i) => (
             <tr key={i} className="border-b border-border/60 last:border-0 hover:bg-muted/50">
               <td className="py-3 pr-4 max-w-[280px] truncate">{r.query}</td>
-              <td className="py-3 pr-4 font-mono-tabular text-xs text-muted-foreground">{r.model}</td>
+              {/* Model column — logo + name */}
+              <td className="py-3 pr-4 font-mono-tabular text-xs text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                  <AILogo model={r.model} className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                  {r.model}
+                </div>
+              </td>
               <td className="py-3 pr-4">
                 {r.mentioned ? (
                   <span className="inline-flex items-center gap-1.5 text-positive font-mono-tabular text-xs">
@@ -185,11 +204,7 @@ function RunsTable({ runs }: { runs: Run[] }) {
               <td className="py-3 pr-4 font-mono-tabular">{r.position ? `#${r.position}` : "—"}</td>
               <td className="py-3 pr-4 font-mono-tabular">
                 {r.mentioned ? (
-                  <span
-                    className={
-                      r.sentiment > 0.5 ? "text-positive" : r.sentiment > 0.2 ? "text-foreground" : "text-negative"
-                    }
-                  >
+                  <span className={r.sentiment > 0.5 ? "text-positive" : r.sentiment > 0.2 ? "text-foreground" : "text-negative"}>
                     {r.sentiment > 0 ? "+" : ""}
                     {r.sentiment.toFixed(2)}
                   </span>
@@ -206,23 +221,25 @@ function RunsTable({ runs }: { runs: Run[] }) {
   );
 }
 
-const TREND = [12, 14, 13, 16, 15, 18, 22, 20, 24, 26, 25, 28, 30, 27, 31, 34, 33, 36, 40, 38, 42, 45, 43, 48, 52, 50, 55, 58, 61, 64];
+// ─── Trend sparkline ──────────────────────────────────────────────────────────
+
+const TREND_DATA = [12,14,13,16,15,18,22,20,24,26,25,28,30,27,31,34,33,36,40,38,42,45,43,48,52,50,55,58,61,64];
 
 function Trend() {
   const { t } = useI18n();
-  const max = Math.max(...TREND);
-  const min = Math.min(...TREND);
+  const max = Math.max(...TREND_DATA);
+  const min = Math.min(...TREND_DATA);
   const w = 300;
   const h = 120;
-  const step = w / (TREND.length - 1);
-  const points = TREND.map((v, i) => {
+  const step = w / (TREND_DATA.length - 1);
+  const points = TREND_DATA.map((v, i) => {
     const x = i * step;
     const y = h - ((v - min) / (max - min)) * h;
     return `${x},${y}`;
   }).join(" ");
   const area = `0,${h} ${points} ${w},${h}`;
-  const last = TREND[TREND.length - 1];
-  const first = TREND[0];
+  const last = TREND_DATA[TREND_DATA.length - 1];
+  const first = TREND_DATA[0];
   const delta = (((last - first) / first) * 100).toFixed(0);
 
   return (
@@ -252,20 +269,39 @@ function Trend() {
   );
 }
 
-function SourceGap({ items }: { items: { domain: string; citations: number; note: string }[] }) {
+// ─── Source Gap ───────────────────────────────────────────────────────────────
+
+type GapItem = { domain: string; citations: number; models: string[] };
+
+function SourceGap({ items }: { items: GapItem[] }) {
   const { t } = useI18n();
   return (
     <div className="grid sm:grid-cols-2 gap-3">
       {items.map((s) => (
         <div
           key={s.domain}
-          className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-3"
+          className="flex items-start justify-between rounded-lg border border-border bg-muted/30 px-4 py-3 gap-4"
         >
-          <div>
-            <div className="font-mono-tabular text-sm">{s.domain}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">{s.note}</div>
+          <div className="min-w-0">
+            {/* Domain with its favicon */}
+            <div className="flex items-center gap-1.5 font-mono-tabular text-sm">
+              <BrandLogo name={s.domain} domain={s.domain} size={14} />
+              <span className="truncate">{s.domain}</span>
+            </div>
+            {/* Models that cite this domain — each with its AI logo */}
+            <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+              {s.models.map((m) => (
+                <span
+                  key={m}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono-tabular bg-card border border-border text-muted-foreground"
+                >
+                  <AILogo model={m} className="w-2.5 h-2.5 shrink-0 opacity-70" />
+                  {m}
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="text-right">
+          <div className="text-right shrink-0">
             <div className="font-mono-tabular text-lg">{s.citations}</div>
             <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("dash.citations")}</div>
           </div>

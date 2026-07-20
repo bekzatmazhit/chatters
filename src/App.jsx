@@ -1,6 +1,6 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { BrandProvider } from './components/BrandContext';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { BrandProvider, useBrands } from './components/BrandContext';
 import LandingView from './components/views/LandingView';
 import PublicAuditView from './components/views/PublicAuditView';
 import WorkspaceHubView from './components/views/WorkspaceHubView';
@@ -20,6 +20,17 @@ import MonitoringView from './components/views/MonitoringView';
 import IntegrationsHub from './components/views/IntegrationsHub';
 import SettingsView from './components/views/SettingsView';
 import BrandDashboardLayout from './components/layout/BrandDashboardLayout';
+import NotFoundView from './components/views/NotFoundView';
+import { Toaster } from './components/ui/Toaster';
+
+function WorkspaceSettingsRouter() {
+  const { brands } = useBrands();
+  const { section } = useParams();
+  const slug = brands[0]?.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'workspace';
+  const targetSection = section && ['general', 'reports', 'white-label'].includes(section) ? section : 'general';
+
+  return <Navigate to={`/workspace/${slug}/settings/${targetSection}`} replace />;
+}
 
 function App() {
   return (
@@ -30,6 +41,9 @@ function App() {
             <Route path="/" element={<LandingView />} />
             <Route path="/audit" element={<PublicAuditView />} />
             <Route path="/workspace" element={<WorkspaceHubView />} />
+            <Route path="/hub" element={<WorkspaceHubView />} />
+            <Route path="/workspace-settings" element={<WorkspaceSettingsRouter />} />
+            <Route path="/workspace-settings/:section" element={<WorkspaceSettingsRouter />} />
             <Route path="/sandbox" element={<DesignSystemView />} />
             <Route path="/login" element={<LoginView />} />
             <Route path="/signup" element={<SignupView />} />
@@ -49,10 +63,15 @@ function App() {
               <Route path="monitoring/*" element={<MonitoringView />} />
               <Route path="integrations" element={<IntegrationsHub />} />
               <Route path="settings/*" element={<SettingsView />} />
-              {/* Other nested routes will go here as they are developed */}
+              {/* Catch-all for unknown sub-paths */}
+              <Route path="*" element={<NotFoundView />} />
             </Route>
+
+            {/* Global 404 */}
+            <Route path="*" element={<NotFoundView />} />
           </Routes>
         </div>
+        <Toaster />
       </BrandProvider>
     </BrowserRouter>
   );

@@ -96,11 +96,13 @@ export default function OnboardingWizard({
     return () => clearTimeout(handler);
   }, [domain]);
 
+  const { toast } = useToast();
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
-        alert('Файл слишком большой (макс. 2МБ)');
+        toast({ title: 'Файл слишком большой', description: 'Максимальный размер 2 МБ.', variant: 'destructive' });
         return;
       }
       setLogoFile(file);

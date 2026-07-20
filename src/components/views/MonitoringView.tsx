@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useBrands } from '../BrandContext';
 import { supabase } from '@/lib/supabase';
@@ -101,6 +101,12 @@ export default function MonitoringView() {
   const [alerts, setAlerts] = useState<any[]>(MOCK_ALERTS);
   const [timelineEvents, setTimelineEvents] = useState<any[]>(MOCK_TIMELINE);
   const [expandedTimeline, setExpandedTimeline] = useState<number | null>(null);
+  
+  // Filter dropdown states
+  const [alertsStatusFilterOpen, setAlertsStatusFilterOpen] = useState(false);
+  const [selectedAlertsStatusFilter, setSelectedAlertsStatusFilter] = useState<string | null>(null);
+  const [timelineTypeFilterOpen, setTimelineTypeFilterOpen] = useState(false);
+  const [selectedTimelineTypeFilter, setSelectedTimelineTypeFilter] = useState<string | null>(null);
   
   // Triggers Modal State
   const [isTriggerModalOpen, setIsTriggerModalOpen] = useState(false);
@@ -283,6 +289,14 @@ export default function MonitoringView() {
     }
   };
 
+  const filteredAlerts = useMemo(() => {
+    return alerts.filter((alert: any) => !selectedAlertsStatusFilter || alert.status === selectedAlertsStatusFilter);
+  }, [alerts, selectedAlertsStatusFilter]);
+
+  const filteredTimelineEvents = useMemo(() => {
+    return timelineEvents.filter((event: any) => !selectedTimelineTypeFilter || event.type === selectedTimelineTypeFilter);
+  }, [timelineEvents, selectedTimelineTypeFilter]);
+
   return (
     <div className="flex flex-col h-full max-w-7xl mx-auto pb-6">
       
@@ -431,9 +445,22 @@ export default function MonitoringView() {
             <div className="p-4 border-b border-border flex items-center justify-between gap-4 shrink-0">
               <h2 className="eyebrow">сработавшие алерты</h2>
               <div className="flex items-center gap-2">
-                <button className="h-9 px-3 flex items-center gap-2 bg-[#fbfbfd] border border-border rounded-md text-[13px] font-medium text-content-secondary hover:text-[#111827] lowercase transition-colors">
-                  <Filter className="w-4 h-4" /> статус
-                </button>
+                <div className="relative">
+                  <button 
+                    onClick={() => setAlertsStatusFilterOpen(!alertsStatusFilterOpen)}
+                    className={`h-9 px-3 flex items-center gap-2 rounded-md text-[13px] font-medium lowercase transition-colors ${selectedAlertsStatusFilter ? 'bg-accent/10 border border-accent text-accent' : 'bg-[#fbfbfd] border border-border text-content-secondary hover:text-[#111827]'}`}
+                  >
+                    <Filter className="w-4 h-4" /> статус
+                  </button>
+                  {alertsStatusFilterOpen && (
+                    <div className="absolute top-full right-0 mt-1 bg-white border border-border rounded-lg shadow-xl z-50 min-w-[140px] py-1">
+                      <button onClick={() => { setSelectedAlertsStatusFilter(null); setAlertsStatusFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">все</button>
+                      <button onClick={() => { setSelectedAlertsStatusFilter('new'); setAlertsStatusFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">новое</button>
+                      <button onClick={() => { setSelectedAlertsStatusFilter('viewed'); setAlertsStatusFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">просмотрено</button>
+                      <button onClick={() => { setSelectedAlertsStatusFilter('resolved'); setAlertsStatusFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">решено</button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -448,7 +475,7 @@ export default function MonitoringView() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
-                  {alerts.map(alert => (
+                  {filteredAlerts.map(alert => (
                     <tr key={alert.id} className="hover:bg-[#fbfbfd] transition-colors group">
                       <td className="px-4 py-4 text-[13px] font-medium text-[#111827]">
                         <div className="flex items-center gap-2.5">
@@ -481,15 +508,29 @@ export default function MonitoringView() {
             <div className="p-4 border-b border-border flex items-center justify-between gap-4 shrink-0">
               <h2 className="eyebrow">общая хронология событий</h2>
               <div className="flex items-center gap-2">
-                <button className="h-9 px-3 flex items-center gap-2 bg-[#fbfbfd] border border-border rounded-md text-[13px] font-medium text-content-secondary hover:text-[#111827] lowercase transition-colors">
-                  <Filter className="w-4 h-4" /> тип события
-                </button>
+                <div className="relative">
+                  <button 
+                    onClick={() => setTimelineTypeFilterOpen(!timelineTypeFilterOpen)}
+                    className={`h-9 px-3 flex items-center gap-2 rounded-md text-[13px] font-medium lowercase transition-colors ${selectedTimelineTypeFilter ? 'bg-accent/10 border border-accent text-accent' : 'bg-[#fbfbfd] border border-border text-content-secondary hover:text-[#111827]'}`}
+                  >
+                    <Filter className="w-4 h-4" /> тип события
+                  </button>
+                  {timelineTypeFilterOpen && (
+                    <div className="absolute top-full right-0 mt-1 bg-white border border-border rounded-lg shadow-xl z-50 min-w-[160px] py-1">
+                      <button onClick={() => { setSelectedTimelineTypeFilter(null); setTimelineTypeFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">все</button>
+                      <button onClick={() => { setSelectedTimelineTypeFilter('metric'); setTimelineTypeFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">метрика</button>
+                      <button onClick={() => { setSelectedTimelineTypeFilter('hallucination'); setTimelineTypeFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">галлюцинация</button>
+                      <button onClick={() => { setSelectedTimelineTypeFilter('trigger'); setTimelineTypeFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">триггер</button>
+                      <button onClick={() => { setSelectedTimelineTypeFilter('integration'); setTimelineTypeFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">интеграция</button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
             <div className="flex-1 overflow-auto custom-scrollbar p-6">
               <div className="relative border-l-2 border-border/60 ml-4 space-y-8 pb-8">
-                {timelineEvents.map(event => (
+                {filteredTimelineEvents.map(event => (
                   <div key={event.id} className="relative pl-8">
                     {/* Timeline Node */}
                     <div className={`absolute -left-[17px] top-1 w-8 h-8 rounded-full border-4 border-white ${event.bg} flex items-center justify-center shadow-sm`}>
@@ -518,8 +559,22 @@ export default function MonitoringView() {
                             {JSON.stringify(event, null, 2)}
                           </div>
                           <div className="mt-3 flex justify-end">
-                             <Button variant="outline" className="h-8 px-3 text-[11px] lowercase rounded">
-                               перейти
+                             <Button 
+                               variant="outline" 
+                               className="h-8 px-3 text-[11px] lowercase rounded"
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 // Navigate to relevant page based on event type
+                                 if (event.type === 'hallucination') {
+                                   navigate(`/workspace/${slug}/optimization`);
+                                 } else if (event.type === 'trigger') {
+                                   navigate(`/workspace/${slug}/monitoring/alerts`);
+                                 } else {
+                                   navigate(`/workspace/${slug}/analytics`);
+                                 }
+                               }}
+                             >
+                               <ArrowRight className="w-3.5 h-3.5 mr-1" /> перейти
                              </Button>
                           </div>
                         </div>

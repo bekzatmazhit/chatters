@@ -1,27 +1,40 @@
 ﻿import * as React from "react";
-import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { Check } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-const Checkbox = React.forwardRef<
-  React.ElementRef<typeof CheckboxPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>
->(({ className, ...props }, ref) => (
-  <CheckboxPrimitive.Root
-    ref={ref}
-    className={cn(
-      "grid place-content-center peer h-4 w-4 shrink-0 rounded-sm border border-primary shadow cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
-      className,
-    )}
-    {...props}
-  >
-    <CheckboxPrimitive.Indicator className={cn("grid place-content-center text-current")}>
-      <Check className="h-4 w-4" />
-    </CheckboxPrimitive.Indicator>
-  </CheckboxPrimitive.Root>
-));
-Checkbox.displayName = CheckboxPrimitive.Root.displayName;
+interface CheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> {
+  onCheckedChange?: (checked: boolean) => void;
+}
+
+const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
+  ({ className, onCheckedChange, onChange, checked, defaultChecked, ...props }, ref) => {
+    const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+      if (onCheckedChange) {
+        onCheckedChange(event.target.checked);
+      }
+      if (onChange) {
+        onChange(event);
+      }
+    };
+
+    return (
+      <label className={cn("relative inline-flex h-4 w-4 shrink-0 rounded-sm border border-primary bg-background text-primary shadow-sm transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2", className)}>
+        <input
+          ref={ref}
+          type="checkbox"
+          className="peer absolute inset-0 h-full w-full opacity-0 cursor-pointer m-0"
+          onChange={handleChange}
+          checked={checked}
+          defaultChecked={defaultChecked}
+          {...props}
+        />
+        <Check className="pointer-events-none absolute left-0 top-0 h-4 w-4 text-transparent transition-colors peer-checked:text-current" />
+      </label>
+    );
+  }
+);
+Checkbox.displayName = "Checkbox";
 
 export { Checkbox };
 

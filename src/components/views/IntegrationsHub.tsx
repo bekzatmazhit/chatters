@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { IntegrationIcon } from '@/components/ui/IntegrationIcon';
 import { Button } from '@/components/ui/button';
 import { Settings2, PowerOff, Plus, Send, Loader2, AlertCircle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 const INTEGRATIONS = [
   {
@@ -74,6 +75,7 @@ export default function IntegrationsHub() {
   const [telegramChatId, setTelegramChatId] = useState('');
   const [configJson, setConfigJson] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const { toast } = useToast();
 
   // Connection Simulation State
   const [connectingId, setConnectingId] = useState<string | null>(null);
@@ -197,11 +199,11 @@ export default function IntegrationsHub() {
         service_name: requestServiceName.trim()
       });
       if (error) throw error;
-      alert('Заявка успешно отправлена! Мы свяжемся с вами.');
+      toast({ title: 'Заявка отправлена', description: 'Мы свяжемся с вами в ближайшее время.' });
       setRequestServiceName('');
     } catch (err) {
       console.warn('Fallback local request', err);
-      alert('Заявка сохранена локально (БД недоступна).');
+      toast({ title: 'Заявка сохранена локально', description: 'Данные сохранены в локальном режиме.' });
       setRequestServiceName('');
     } finally {
       setIsRequesting(false);

@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { User, CreditCard, Users, Key, LogOut, Copy } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 export default function CombinedSettingsView() {
   const [activeTab, setActiveTab] = useState('profile');
   const [userEmail, setUserEmail] = useState('');
+  const { toast } = useToast();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -18,7 +20,7 @@ export default function CombinedSettingsView() {
 
   const copyApiKey = () => {
     navigator.clipboard.writeText('sk_test_51Nx...8aZq');
-    alert('API ключ скопирован в буфер обмена');
+    toast({ title: 'API ключ скопирован', description: 'Текст успешно помещён в буфер обмена.' });
   };
 
   return (

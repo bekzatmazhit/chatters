@@ -8,9 +8,10 @@ import {
   ArrowLeft, Loader2, Sparkles, MessageCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/lib/supabase';
+import { ScanButton } from '@/components/ScanButton';
 import { ExportReportModal } from '@/components/workspace/QuickActions';
 import { DataChatWindow } from '@/components/views/DataChatWindow';
+import { Toaster } from '@/components/ui/Toaster';
 
 export default function BrandDashboardLayout() {
   const { slug } = useParams();
@@ -20,7 +21,6 @@ export default function BrandDashboardLayout() {
   
   const [isBrandDropdownOpen, setIsBrandDropdownOpen] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [isRunning, setIsRunning] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   
   // Find current brand or mock it
@@ -113,21 +113,9 @@ export default function BrandDashboardLayout() {
   // Helper to get current section name for breadcrumbs
   const currentSectionName = [...navItems, ...bottomNavItems].find(item => isItemActive(item.path))?.name || 'сводка';
 
-  const handleRunProject = async () => {
-    setIsRunning(true);
-    try {
-      const { error } = await supabase.functions.invoke('run-project-check', {
-        body: { project_id: currentBrand.id }
-      });
-      if (error) throw error;
-      alert('Проверка проекта успешно запущена');
-    } catch (err) {
-      console.error(err);
-      alert('Запуск проверки пока недоступен (требуется деплой Edge Function).');
-    } finally {
-      setIsRunning(false);
-    }
-  };
+  const scanMode = import.meta.env.VITE_SCAN_MODE?.toLowerCase() || 'live';
+  const isMockMode = scanMode === 'mock';
+
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#fbfbfd] text-content-primary font-sans">
@@ -253,6 +241,15 @@ export default function BrandDashboardLayout() {
           </nav>
           
           <nav className="space-y-0.5 mt-8">
+            {/* Promo Banner */}
+            <div className="mx-0 mb-3 overflow-hidden rounded-3xl border border-border bg-white shadow-sm">
+              <img
+                src="/adbanner.png"
+                alt="Акция chatters"
+                className="w-full h-auto object-cover"
+              />
+            </div>
+
             {bottomNavItems.map((item) => {
               const active = isItemActive(item.path);
               const hasSubItems = !!item.subItems;
@@ -322,14 +319,16 @@ export default function BrandDashboardLayout() {
         </div>
 
         {/* User Block */}
-        <div className="p-4 border-t border-border shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-[#111827] flex items-center justify-center text-white text-[12px] font-bold uppercase">
-              A
-            </div>
-            <div className="overflow-hidden">
-              <div className="text-[13px] font-semibold text-[#111827] truncate">Alex Smith</div>
-              <div className="text-[11px] text-content-tertiary truncate">alex@acme.corp</div>
+        <div className="shrink-0">
+          <div className="p-4 border-t border-border">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-[#111827] flex items-center justify-center text-white text-[12px] font-bold uppercase">
+                A
+              </div>
+              <div className="overflow-hidden">
+                <div className="text-[13px] font-semibold text-[#111827] truncate">Alex Smith</div>
+                <div className="text-[11px] text-content-tertiary truncate">alex@acme.corp</div>
+              </div>
             </div>
           </div>
         </div>
@@ -368,14 +367,14 @@ export default function BrandDashboardLayout() {
             
             <div className="w-px h-4 bg-border mx-1"></div>
 
-            <Button 
+            <ScanButton
+              projectId={currentBrand.id}
+              projectName={currentBrand.name}
+              configScope="project"
+              label="запустить проверку"
+              variant="primary"
               className="h-8 px-4 rounded-full text-[12px] lowercase font-semibold shadow-sm"
-              onClick={handleRunProject}
-              disabled={isRunning}
-            >
-              {isRunning ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />}
-              {isRunning ? 'выполняется...' : 'запуск'}
-            </Button>
+            />
 
             <button className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[#fbfbfd] text-content-muted hover:text-[#111827] transition-colors relative ml-1">
               <Bell className="w-4 h-4" />
@@ -416,9 +415,9 @@ export default function BrandDashboardLayout() {
         .custom-scrollbar:hover::-webkit-scrollbar-thumb { background: #D1D5DB; }
       `}} />
 
-      <ExportReportModal 
-        isOpen={showExportModal} 
-        onClose={() => setShowExportModal(false)} 
+      <ExportReportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
       />
     </div>
   );

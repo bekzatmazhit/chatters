@@ -12,6 +12,8 @@ import {
   Plus, Search, Filter, CheckCircle2, XCircle, MoreVertical, RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PromptFrequencySelect } from '@/components/PromptFrequencySelect';
+import { computeNextScanAt, useTier, type Frequency } from '@/hooks/useTier';
 
 // Mock Data
 const MODELS_DATA = [
@@ -67,6 +69,7 @@ export default function AnalyticsView() {
   
   const currentBrand = brands.find(b => b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === slug);
   const projectId = currentBrand?.id;
+  const { tier } = useTier({ projectId });
   
   const pathParts = location.pathname.split('/');
   const activeTab = pathParts[pathParts.length - 1] === 'analytics' ? 'models' : pathParts[pathParts.length - 1];
@@ -83,6 +86,14 @@ export default function AnalyticsView() {
   const [compareData, setCompareData] = useState<any[]>(COMPARE_DATA);
   const [compareSovData, setCompareSovData] = useState<any[]>(COMPARE_SOV_DATA);
   const [marketData, setMarketData] = useState<any[]>(MARKET_DATA);
+  
+  // Search inputs
+  const [sourcesSearchQuery, setSourcesSearchQuery] = useState('');
+  const [promptsSearchQuery, setPromptsSearchQuery] = useState('');
+  
+  // Filter dropdowns
+  const [sourcesModelFilterOpen, setSourcesModelFilterOpen] = useState(false);
+  const [selectedSourcesModelFilter, setSelectedSourcesModelFilter] = useState<string | null>(null);
 
   const [onlyLosses, setOnlyLosses] = useState(false);
   const [isAddPromptModalOpen, setIsAddPromptModalOpen] = useState(false);
@@ -122,7 +133,10 @@ export default function AnalyticsView() {
           if (data && data.length > 0) {
             setPromptsData(data.map(d => ({
               id: d.id, text: d.prompt_text, models: d.ai_models || [], freq: 0,
-              lastFound: true, active: d.is_active
+              lastFound: true, active: d.is_active,
+              frequency: (d.frequency as Frequency) ?? 'weekly',
+              last_scanned_at: d.last_scanned_at,
+              next_scan_at: d.next_scan_at,
             })));
           }
         } else if (activeTab === 'compare') {
@@ -145,9 +159,27 @@ export default function AnalyticsView() {
     return compareData.filter(row => row.brand === 0 || (row.comp1 > 0 && row.comp1 < row.brand));
   }, [compareData, onlyLosses]);
 
+  const filteredSourcesData = useMemo(() => {
+    const query = sourcesSearchQuery.toLowerCase();
+    return sourcesData.filter(row => {
+      const matchesQuery = !query || row.domain.toLowerCase().includes(query) || row.prompt.toLowerCase().includes(query);
+      const matchesModel = !selectedSourcesModelFilter || row.model === selectedSourcesModelFilter;
+      return matchesQuery && matchesModel;
+    });
+  }, [sourcesData, selectedSourcesModelFilter, sourcesSearchQuery]);
+
+  const filteredPromptsData = useMemo(() => {
+    const query = promptsSearchQuery.toLowerCase();
+    return promptsData.filter(row => !query || row.text.toLowerCase().includes(query));
+  }, [promptsData, promptsSearchQuery]);
+
   // Prompt Handlers
   const handleSavePrompt = async () => {
     if (!newPromptText.trim()) return;
+    // New prompts default to 'weekly' (a safe default across all tiers);
+    // next_scan_at is computed once so the scheduler can pick it up.
+    const defaultFrequency: Frequency = 'weekly';
+    const defaultNextScanAt = computeNextScanAt(defaultFrequency);
     try {
       if (isBulkMode) {
         const lines = newPromptText.split('\n').map(line => line.trim()).filter(Boolean);
@@ -155,7 +187,9 @@ export default function AnalyticsView() {
           project_id: projectId,
           prompt_text: text,
           ai_models: newPromptModels,
-          is_active: true
+          is_active: true,
+          frequency: defaultFrequency,
+          next_scan_at: defaultNextScanAt,
         }));
         await supabase.from('tracked_prompts').insert(inserts);
       } else {
@@ -163,7 +197,9 @@ export default function AnalyticsView() {
           project_id: projectId,
           prompt_text: newPromptText,
           ai_models: newPromptModels,
-          is_active: true
+          is_active: true,
+          frequency: defaultFrequency,
+          next_scan_at: defaultNextScanAt,
         });
       }
       setIsAddPromptModalOpen(false);
@@ -173,6 +209,24 @@ export default function AnalyticsView() {
     } catch (err) {
       console.warn('Fallback add prompt', err);
       setIsAddPromptModalOpen(false);
+    }
+  };
+
+  // Update a prompt's per-prompt scan frequency, persisting + recomputing next_scan_at.
+  // Tier gating is enforced inside <PromptFrequencySelect>, so by the time we
+  // get here the value is allowed for the current tier.
+  const handleChangeFrequency = async (promptId: any, next: Frequency) => {
+    const nextScanAt = computeNextScanAt(next);
+    setPromptsData(prev => prev.map(p => p.id === promptId
+      ? { ...p, frequency: next, next_scan_at: nextScanAt }
+      : p));
+    try {
+      await supabase
+        .from('tracked_prompts')
+        .update({ frequency: next, next_scan_at: nextScanAt })
+        .eq('id', promptId);
+    } catch (err) {
+      console.warn('Update prompt frequency fallback', err);
     }
   };
 
@@ -312,12 +366,34 @@ export default function AnalyticsView() {
             <div className="p-4 border-b border-border flex items-center justify-between gap-4">
               <div className="relative w-64 shrink-0">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-content-tertiary" />
-                <input type="text" placeholder="поиск по доменам..." className="w-full h-9 pl-9 pr-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 focus:ring-accent outline-none lowercase" />
+                <input 
+                  type="text" 
+                  value={sourcesSearchQuery}
+                  onChange={e => setSourcesSearchQuery(e.target.value)}
+                  placeholder="поиск по доменам..." 
+                  className="w-full h-9 pl-9 pr-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 focus:ring-accent outline-none lowercase" 
+                />
               </div>
               <div className="flex items-center gap-2">
-                <button className="h-9 px-3 flex items-center gap-2 bg-[#fbfbfd] border border-border rounded-md text-[13px] font-medium text-content-secondary hover:text-[#111827] lowercase transition-colors">
-                  <Filter className="w-4 h-4" /> модель
-                </button>
+                <div className="relative">
+                  <button 
+                    onClick={() => setSourcesModelFilterOpen(!sourcesModelFilterOpen)}
+                    className={`h-9 px-3 flex items-center gap-2 rounded-md text-[13px] font-medium lowercase transition-colors ${selectedSourcesModelFilter ? 'bg-accent/10 border border-accent text-accent' : 'bg-[#fbfbfd] border border-border text-content-secondary hover:text-[#111827]'}`}
+                  >
+                    <Filter className="w-4 h-4" /> модель
+                  </button>
+                  {sourcesModelFilterOpen && (
+                    <div className="absolute top-full right-0 mt-1 bg-white border border-border rounded-lg shadow-xl z-50 min-w-[160px] py-1">
+                      <button onClick={() => { setSelectedSourcesModelFilter(null); setSourcesModelFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">все</button>
+                      {['chatgpt', 'claude', 'gemini', 'perplexity'].map(m => (
+                        <button key={m} onClick={() => { setSelectedSourcesModelFilter(m); setSourcesModelFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase flex items-center gap-2">
+                          <ModelIcon model={m} size={14} />
+                          {m === 'chatgpt' ? 'ChatGPT' : m.charAt(0).toUpperCase() + m.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             
@@ -380,7 +456,13 @@ export default function AnalyticsView() {
             <div className="p-4 border-b border-border flex items-center justify-between gap-4">
               <div className="relative w-64 shrink-0">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-content-tertiary" />
-                <input type="text" placeholder="поиск промптов..." className="w-full h-9 pl-9 pr-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 focus:ring-accent outline-none lowercase" />
+                <input 
+                  type="text" 
+                  value={promptsSearchQuery}
+                  onChange={e => setPromptsSearchQuery(e.target.value)}
+                  placeholder="поиск промптов..." 
+                  className="w-full h-9 pl-9 pr-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 focus:ring-accent outline-none lowercase" 
+                />
               </div>
               <div className="flex items-center gap-2">
                 <button 
@@ -411,7 +493,7 @@ export default function AnalyticsView() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
-                  {promptsData.map(prompt => (
+                  {filteredPromptsData.map(prompt => (
                     <tr key={prompt.id} className={`hover:bg-[#fbfbfd] transition-colors ${!prompt.active ? 'opacity-60' : ''}`}>
                       <td className="px-4 py-3 text-[13px] font-medium text-[#111827] pr-8">{prompt.text}</td>
                       <td className="px-4 py-3">
@@ -429,7 +511,13 @@ export default function AnalyticsView() {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-[13px] font-medium text-[#111827]">{prompt.freq}</td>
+                      <td className="px-4 py-3 text-right">
+                        <PromptFrequencySelect
+                          value={prompt.frequency}
+                          tier={tier}
+                          onChange={(next) => handleChangeFrequency(prompt.id, next)}
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         {prompt.lastFound ? (
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium font-mono text-[#0F6E56] bg-[#E1F5EE] lowercase">
@@ -525,7 +613,17 @@ export default function AnalyticsView() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
-                        <button className="text-content-tertiary hover:text-accent transition-colors" title="Редактировать"><MoreVertical className="w-4 h-4" /></button>
+                        <button 
+                          className="text-content-tertiary hover:text-accent transition-colors" 
+                          title="Редактировать"
+                          onClick={() => {
+                            setEditingPersonaId(p.id);
+                            setNewPersona({ name: p.name, role: p.role, city: p.city, language: p.language, context_notes: p.context_notes, icon_emoji: p.icon_emoji });
+                            setIsPersonaModalOpen(true);
+                          }}
+                        >
+                          <MoreVertical className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 text-[11px] text-content-tertiary font-mono mb-3">

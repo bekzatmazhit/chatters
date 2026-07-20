@@ -1,21 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useBrands } from '../BrandContext';
 import { supabase } from '@/lib/supabase';
 import { ModelIcon } from '@/components/ui/ModelIcon';
+import { ScanButton } from '@/components/ScanButton';
+import { useScanJobs } from '@/hooks/useScanJobs';
 import { 
   Search, Filter, Calendar, CheckCircle2, XCircle, 
   RefreshCw, Bookmark, Play, ChevronRight, TerminalSquare 
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { computeNextScanAt } from '@/hooks/useTier';
 
 // History logs mock
 const mockLogs = [
-  { id: 1, date: '25.10.2023 14:30', prompt: 'какой лучший сервис для управления задачами?', model: 'chatgpt', result: { found: true, competitors: 3 } },
-  { id: 2, date: '25.10.2023 12:15', prompt: 'топ альтернатив jira', model: 'claude', result: { found: false, competitors: 5 } },
-  { id: 3, date: '24.10.2023 09:00', prompt: 'сравнение trello и asana', model: 'gemini', result: { found: true, competitors: 1 } },
-  { id: 4, date: '24.10.2023 08:45', prompt: 'лучшие бесплатные таск трекеры', model: 'perplexity', result: { found: false, competitors: 4 } },
-  { id: 5, date: '23.10.2023 18:20', prompt: 'какой софт использует apple', model: 'chatgpt', result: { found: true, competitors: 2 } },
+  { id: 1, date: '25.10.2023 14:30', sortDate: '2023-10-25T14:30:00.000Z', prompt: 'какой лучший сервис для управления задачами?', model: 'chatgpt', result: { found: true, competitors: 3 } },
+  { id: 2, date: '25.10.2023 12:15', sortDate: '2023-10-25T12:15:00.000Z', prompt: 'топ альтернатив jira', model: 'claude', result: { found: false, competitors: 5 } },
+  { id: 3, date: '24.10.2023 09:00', sortDate: '2023-10-24T09:00:00.000Z', prompt: 'сравнение trello и asana', model: 'gemini', result: { found: true, competitors: 1 } },
+  { id: 4, date: '24.10.2023 08:45', sortDate: '2023-10-24T08:45:00.000Z', prompt: 'лучшие бесплатные таск трекеры', model: 'perplexity', result: { found: false, competitors: 4 } },
+  { id: 5, date: '23.10.2023 18:20', sortDate: '2023-10-23T18:20:00.000Z', prompt: 'какой софт использует apple', model: 'chatgpt', result: { found: true, competitors: 2 } },
 ];
 
 // Personas mock
@@ -40,10 +43,49 @@ export default function RunsView() {
     navigate(`/workspace/${slug}/runs/${tab}`, { replace: true });
   };
 
+  // Realtime subscription for new mentions from scan pipeline
+  const { subscribeToMentions, subscribeToProjectJobs } = useScanJobs(projectId);
+
+  useEffect(() => {
+    if (!projectId || activeTab !== 'history') return;
+
+    // Subscribe to new mentions — prepend to history table in realtime
+    const unsubMentions = subscribeToMentions(projectId, (newMention) => {
+      const formatted = {
+        id: newMention.id,
+        date: new Date(newMention.created_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }),
+        sortDate: newMention.created_at,
+        prompt: '...',
+        model: newMention.ai_model,
+        result: {
+          found: newMention.brand_mentioned,
+          competitors: newMention.competitors_mentioned?.length || 0,
+        },
+      };
+      setHistoryLogs(prev => [formatted, ...prev]);
+    });
+
+    // Subscribe to scan_jobs updates to track active scans
+    const unsubJobs = subscribeToProjectJobs(projectId);
+
+    return () => {
+      unsubMentions();
+      unsubJobs();
+    };
+  }, [projectId, activeTab, subscribeToMentions, subscribeToProjectJobs]);
+
   // State for History
   const [historyLogs, setHistoryLogs] = useState<any[]>(mockLogs);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Filter dropdown states
+  const [modelFilterOpen, setModelFilterOpen] = useState(false);
+  const [periodFilterOpen, setPeriodFilterOpen] = useState(false);
+  const [resultFilterOpen, setResultFilterOpen] = useState(false);
+  const [selectedModelFilter, setSelectedModelFilter] = useState<string | null>(null);
+  const [selectedPeriodFilter, setSelectedPeriodFilter] = useState<string | null>(null);
+  const [selectedResultFilter, setSelectedResultFilter] = useState<string | null>(null);
 
   // State for Manual Run
   const [manualPrompt, setManualPrompt] = useState('');
@@ -79,6 +121,7 @@ export default function RunsView() {
           setHistoryLogs(data.map(d => ({
             id: d.id,
             date: new Date(d.created_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }),
+            sortDate: d.created_at,
             prompt: d.prompt_text,
             model: d.model,
             result: { found: d.status === 'found', competitors: 0 }
@@ -160,22 +203,52 @@ export default function RunsView() {
 
   const handleSavePrompt = async (promptText: string) => {
     try {
+      // New prompts default to 'weekly' cadence so the scheduler can pick
+      // them up without over-spending API credits on day one.
       const { error } = await supabase.from('tracked_prompts').insert({
         project_id: projectId,
         prompt_text: promptText,
         ai_models: selectedModels,
-        is_active: true
+        is_active: true,
+        frequency: 'weekly',
+        next_scan_at: computeNextScanAt('weekly'),
       });
       if (error) throw error;
-      alert('Успешно сохранено в библиотеку!');
+      toast({ title: 'Сохранено в библиотеку', description: 'Промпт успешно добавлен.' });
     } catch (err) {
       console.warn('Fallback: DB not ready', err);
-      alert('Успешно сохранено в библиотеку! (Локальная эмуляция)');
+      toast({ title: 'Сохранено локально', description: 'Промпт сохранён в локальной эмуляции.' });
     }
   };
 
   // State for History Modal
   const [selectedLog, setSelectedLog] = useState<any>(null);
+
+  const filteredHistoryLogs = useMemo(() => {
+    const query = searchQuery.toLowerCase();
+
+    return historyLogs.filter((log: any) => {
+      const matchesQuery = !query || [log.prompt, log.model, log.date].some((value) => String(value).toLowerCase().includes(query));
+      const matchesModel = !selectedModelFilter || log.model === selectedModelFilter;
+      const matchesResult = !selectedResultFilter || (selectedResultFilter === 'found' ? log.result?.found : !log.result?.found);
+
+      let matchesPeriod = true;
+      if (selectedPeriodFilter && log.sortDate) {
+        const date = new Date(log.sortDate);
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const startOfWeek = new Date(startOfToday);
+        startOfWeek.setDate(startOfToday.getDate() - 6);
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        if (selectedPeriodFilter === 'today') matchesPeriod = date >= startOfToday;
+        if (selectedPeriodFilter === 'week') matchesPeriod = date >= startOfWeek;
+        if (selectedPeriodFilter === 'month') matchesPeriod = date >= startOfMonth;
+      }
+
+      return matchesQuery && matchesModel && matchesResult && matchesPeriod;
+    });
+  }, [historyLogs, searchQuery, selectedModelFilter, selectedPeriodFilter, selectedResultFilter]);
 
   return (
     <div className="flex flex-col h-full max-w-7xl mx-auto pb-6 relative">
@@ -213,15 +286,77 @@ export default function RunsView() {
               />
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <button className="h-9 px-3 flex items-center gap-2 bg-[#fbfbfd] border border-border rounded-md text-[13px] font-medium text-content-secondary hover:text-[#111827] lowercase transition-colors">
-                <Filter className="w-4 h-4" /> модель
-              </button>
-              <button className="h-9 px-3 flex items-center gap-2 bg-[#fbfbfd] border border-border rounded-md text-[13px] font-medium text-content-secondary hover:text-[#111827] lowercase transition-colors">
-                <Calendar className="w-4 h-4" /> период
-              </button>
-              <button className="h-9 px-3 flex items-center gap-2 bg-[#fbfbfd] border border-border rounded-md text-[13px] font-medium text-content-secondary hover:text-[#111827] lowercase transition-colors">
-                <CheckCircle2 className="w-4 h-4" /> результат
-              </button>
+              {/* Run new scan button */}
+              <ScanButton
+                projectId={projectId}
+                label="запустить скан"
+                variant="outline"
+                size="sm"
+                className="h-9 px-3 text-[13px] font-medium lowercase"
+                onScanComplete={() => {
+                  // Reload history after scan completes
+                  setSearchQuery(q => q); // trigger useEffect re-run
+                }}
+              />
+              {/* Model Filter */}
+              <div className="relative">
+                <button 
+                  onClick={() => setModelFilterOpen(!modelFilterOpen)}
+                  className={`h-9 px-3 flex items-center gap-2 rounded-md text-[13px] font-medium lowercase transition-colors ${selectedModelFilter ? 'bg-accent/10 border border-accent text-accent' : 'bg-[#fbfbfd] border border-border text-content-secondary hover:text-[#111827]'}`}
+                >
+                  <Filter className="w-4 h-4" /> модель
+                </button>
+                {modelFilterOpen && (
+                  <div className="absolute top-full left-0 mt-1 bg-white border border-border rounded-lg shadow-xl z-50 min-w-[160px] py-1">
+                    <button onClick={() => { setSelectedModelFilter(null); setModelFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">все</button>
+                    {['chatgpt', 'claude', 'gemini', 'perplexity'].map(m => (
+                      <button key={m} onClick={() => { setSelectedModelFilter(m); setModelFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase flex items-center gap-2">
+                        <ModelIcon model={m} size={14} />
+                        {m === 'chatgpt' ? 'ChatGPT' : m.charAt(0).toUpperCase() + m.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              {/* Period Filter */}
+              <div className="relative">
+                <button 
+                  onClick={() => setPeriodFilterOpen(!periodFilterOpen)}
+                  className={`h-9 px-3 flex items-center gap-2 rounded-md text-[13px] font-medium lowercase transition-colors ${selectedPeriodFilter ? 'bg-accent/10 border border-accent text-accent' : 'bg-[#fbfbfd] border border-border text-content-secondary hover:text-[#111827]'}`}
+                >
+                  <Calendar className="w-4 h-4" /> период
+                </button>
+                {periodFilterOpen && (
+                  <div className="absolute top-full left-0 mt-1 bg-white border border-border rounded-lg shadow-xl z-50 min-w-[140px] py-1">
+                    <button onClick={() => { setSelectedPeriodFilter(null); setPeriodFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">все</button>
+                    <button onClick={() => { setSelectedPeriodFilter('today'); setPeriodFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">сегодня</button>
+                    <button onClick={() => { setSelectedPeriodFilter('week'); setPeriodFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">эта неделя</button>
+                    <button onClick={() => { setSelectedPeriodFilter('month'); setPeriodFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">этот месяц</button>
+                  </div>
+                )}
+              </div>
+              
+              {/* Result Filter */}
+              <div className="relative">
+                <button 
+                  onClick={() => setResultFilterOpen(!resultFilterOpen)}
+                  className={`h-9 px-3 flex items-center gap-2 rounded-md text-[13px] font-medium lowercase transition-colors ${selectedResultFilter ? 'bg-accent/10 border border-accent text-accent' : 'bg-[#fbfbfd] border border-border text-content-secondary hover:text-[#111827]'}`}
+                >
+                  <CheckCircle2 className="w-4 h-4" /> результат
+                </button>
+                {resultFilterOpen && (
+                  <div className="absolute top-full left-0 mt-1 bg-white border border-border rounded-lg shadow-xl z-50 min-w-[140px] py-1">
+                    <button onClick={() => { setSelectedResultFilter(null); setResultFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">все</button>
+                    <button onClick={() => { setSelectedResultFilter('found'); setResultFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase flex items-center gap-2">
+                      <CheckCircle2 className="w-3 h-3 text-[#0F6E56]" /> найден
+                    </button>
+                    <button onClick={() => { setSelectedResultFilter('not_found'); setResultFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase flex items-center gap-2">
+                      <XCircle className="w-3 h-3 text-[#A32D2D]" /> не найден
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           {/* Table */}
@@ -241,7 +376,13 @@ export default function RunsView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
-                {historyLogs.map(log => (
+                {filteredHistoryLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-10 text-center text-[13px] text-content-secondary lowercase">
+                      по выбранным фильтрам ничего не найдено
+                    </td>
+                  </tr>
+                ) : filteredHistoryLogs.map(log => (
                   <tr key={log.id} className="hover:bg-[#fbfbfd] cursor-pointer group transition-colors" onClick={() => setSelectedLog(log)}>
                     <td className="px-4 py-3 whitespace-nowrap text-[12px] font-mono text-content-secondary">{log.date}</td>
                     <td className="px-4 py-3 text-[13px] font-medium text-[#111827] max-w-[300px] truncate" title={log.prompt}>{log.prompt}</td>
@@ -395,8 +536,9 @@ export default function RunsView() {
                       onClick={(e) => { 
                         e.stopPropagation(); 
                         setManualPrompt(item.prompt); 
-                        setSelectedModels(item.models); 
-                        // Note: To automatically run after state update, you'd usually use useEffect. We'll just set it.
+                        setSelectedModels(item.models);
+                        // Trigger run after state updates via setTimeout
+                        setTimeout(() => handleRun(), 0);
                       }}
                     >
                       <RefreshCw className="w-4 h-4" />

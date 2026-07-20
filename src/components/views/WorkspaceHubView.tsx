@@ -4,8 +4,9 @@ import { useBrands } from '../BrandContext';
 import { useTheme } from '../ThemeContext';
 import { BrandAvatar } from '@/components/ui/BrandAvatar';
 import { ModelIcon } from '@/components/ui/ModelIcon';
+import { ScanButton } from '@/components/ScanButton';
 import { 
-  Search, Moon, Sun, Bell, Settings, Users, CreditCard, LogOut,
+  Search, Moon, Sun, Bell, Settings2, Users, CreditCard, ArrowRightFromLine,
   RefreshCw, Plus, Download, TrendingUp, TrendingDown, PlaySquare, ArrowUpRight, ArrowDownRight, Loader2
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
@@ -28,9 +29,6 @@ export default function WorkspaceHubView() {
   
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
-  
-  // Run checks state
-  const [isRunningChecks, setIsRunningChecks] = useState(false);
 
   // Fake SOV history generator with forecast
   const sovHistory = useMemo(() => {
@@ -94,13 +92,20 @@ export default function WorkspaceHubView() {
       return (
         <div className="bg-white p-3 rounded-lg border border-border shadow-lg font-mono text-[12px]">
           <p className="font-semibold text-content-primary mb-2 uppercase">{label}</p>
-          {payload.map((entry: any, index: number) => (
-            <div key={index} className="flex items-center gap-2 mb-1 last:mb-0">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
-              <span className="text-content-secondary">{entry.name}:</span>
-              <span className="font-bold text-content-primary">{entry.value}%</span>
-            </div>
-          ))}
+          {payload.map((entry: any, index: number) => {
+            const brand = brands.find(b => b.name === entry.name);
+            return (
+              <div key={index} className="flex items-center gap-2 mb-1 last:mb-0">
+                {brand ? (
+                  <BrandAvatar project={brand} size={16} className="shrink-0" />
+                ) : (
+                  <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: entry.color }} />
+                )}
+                <span className="text-content-secondary">{entry.name}:</span>
+                <span className="font-bold text-content-primary">{entry.value}%</span>
+              </div>
+            );
+          })}
         </div>
       );
     }
@@ -110,21 +115,6 @@ export default function WorkspaceHubView() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate('/login');
-  };
-
-  const handleRunChecks = async () => {
-    setIsRunningChecks(true);
-    try {
-      const { error } = await supabase.functions.invoke('run-all-checks');
-      if (error) throw error;
-      // In real scenario we'd use toast
-      alert('Проверка успешно запущена');
-    } catch (err: any) {
-      console.error(err);
-      alert('Запуск проверки пока недоступен (требуется деплой Edge Function).');
-    } finally {
-      setIsRunningChecks(false);
-    }
   };
 
   return (
@@ -167,38 +157,73 @@ export default function WorkspaceHubView() {
 
           <div className="h-8 w-px bg-border mx-1 hidden sm:block"></div>
 
-          <div className="relative">
-            <button 
-              className="flex items-center gap-2 p-1 rounded-md hover:bg-surface transition-colors text-left"
-              onClick={() => setShowProfileMenu(!showProfileMenu)}
-            >
-              <div className="hidden sm:block text-right">
-                <div className="text-[13px] font-medium text-[#111827] leading-tight">Acme Corp</div>
-                <div className="text-[11px] text-content-tertiary lowercase">настройки</div>
-              </div>
-              <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent font-medium text-[13px]">
-                AC
-              </div>
-            </button>
+              <div className="relative">
+                <button 
+                  className="flex items-center gap-2 p-1 rounded-md hover:bg-surface transition-colors text-left"
+                  onClick={() => setShowProfileMenu(!showProfileMenu)}
+                >
+                  <div className="hidden sm:block text-right">
+                    <div className="text-[13px] font-medium text-[#111827] leading-tight">Acme Corp</div>
+                    <div className="text-[11px] text-content-tertiary lowercase">настройки</div>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent font-medium text-[13px]">
+                    AC
+                  </div>
+                </button>
 
-            {showProfileMenu && (
-              <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-border rounded-lg shadow-lg py-1 z-50">
-                <button className="w-full px-4 py-2 text-[13px] text-content-secondary hover:text-[#111827] hover:bg-surface flex items-center gap-2 lowercase transition-colors">
-                  <Settings className="w-4 h-4" /> настройки воркспейса
-                </button>
-                <button className="w-full px-4 py-2 text-[13px] text-content-secondary hover:text-[#111827] hover:bg-surface flex items-center gap-2 lowercase transition-colors">
-                  <Users className="w-4 h-4" /> команда
-                </button>
-                <button className="w-full px-4 py-2 text-[13px] text-content-secondary hover:text-[#111827] hover:bg-surface flex items-center gap-2 lowercase transition-colors">
-                  <CreditCard className="w-4 h-4" /> биллинг
-                </button>
-                <div className="h-px bg-border my-1"></div>
-                <button className="w-full px-4 py-2 text-[13px] text-red-500 hover:bg-red-50/50 flex items-center gap-2 lowercase transition-colors" onClick={() => navigate('/login')}>
-                  <LogOut className="w-4 h-4" /> выйти
-                </button>
+                {showProfileMenu && (
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-border rounded-xl shadow-lg z-50 overflow-hidden">
+                    {/* ── Header: avatar + name + email ── */}
+                    <div className="flex items-center gap-3 px-3 py-3">
+                      <div className="w-9 h-9 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent font-medium text-[13px] shrink-0">
+                        AC
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-medium text-[#111827] truncate">Acme Corp</div>
+                        <div className="text-[11px] text-content-tertiary truncate lowercase">alex@acme.corp</div>
+                      </div>
+                    </div>
+                    <div className="h-px bg-border"></div>
+
+                    {/* ── Action items ── */}
+                    <div className="py-1">
+                      <button
+                        className="w-full flex items-center gap-2.5 px-3 h-10 text-[13px] text-content-secondary hover:text-[#111827] hover:bg-[#fbfbfd] rounded-lg mx-1 lowercase transition-colors"
+                        onClick={() => { setShowProfileMenu(false); navigate('/workspace-settings'); }}
+                      >
+                        <Settings2 className="w-[18px] h-[18px] shrink-0" />
+                        <span className="leading-none">настройки воркспейса</span>
+                      </button>
+                      <button
+                        className="w-full flex items-center gap-2.5 px-3 h-10 text-[13px] text-content-secondary hover:text-[#111827] hover:bg-[#fbfbfd] rounded-lg mx-1 lowercase transition-colors"
+                        onClick={() => { setShowProfileMenu(false); navigate('/workspace-settings/team'); }}
+                      >
+                        <Users className="w-[18px] h-[18px] shrink-0" />
+                        <span className="leading-none">команда</span>
+                      </button>
+                      <button
+                        className="w-full flex items-center gap-2.5 px-3 h-10 text-[13px] text-content-secondary hover:text-[#111827] hover:bg-[#fbfbfd] rounded-lg mx-1 lowercase transition-colors"
+                        onClick={() => { setShowProfileMenu(false); navigate('/workspace-settings/billing'); }}
+                      >
+                        <CreditCard className="w-[18px] h-[18px] shrink-0" />
+                        <span className="leading-none">биллинг</span>
+                      </button>
+                    </div>
+                    <div className="h-px bg-border mx-2"></div>
+
+                    {/* ── Logout ── */}
+                    <div className="py-1">
+                      <button 
+                        className="w-full flex items-center gap-2.5 px-3 h-10 text-[13px] text-red-500 hover:text-red-600 hover:bg-red-50/60 rounded-lg mx-1 lowercase transition-colors"
+                        onClick={() => { setShowProfileMenu(false); handleSignOut(); }}
+                      >
+                        <ArrowRightFromLine className="w-[18px] h-[18px] shrink-0" />
+                        <span className="leading-none">выйти из аккаунта</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
         </div>
       </header>
 
@@ -322,10 +347,16 @@ export default function WorkspaceHubView() {
                         </div>
 
                         <div className="flex items-center gap-2 pt-3 border-t border-border shrink-0">
-                          <button className="flex-1 py-1.5 text-[12px] font-semibold text-content-secondary hover:text-[#111827] hover:bg-white rounded transition-colors text-center lowercase border border-transparent hover:border-border shadow-sm">
+                          <button
+                            className="flex-1 py-1.5 text-[12px] font-semibold text-content-secondary hover:text-[#111827] hover:bg-white rounded transition-colors text-center lowercase border border-transparent hover:border-border shadow-sm"
+                            onClick={e => { e.stopPropagation(); navigate(`/workspace/${brand.name.toLowerCase()}/runs/history`); }}
+                          >
                             прогоны
                           </button>
-                          <button className="flex-1 py-1.5 text-[12px] font-semibold text-content-secondary hover:text-[#111827] hover:bg-white rounded transition-colors text-center lowercase border border-transparent hover:border-border shadow-sm">
+                          <button
+                            className="flex-1 py-1.5 text-[12px] font-semibold text-content-secondary hover:text-[#111827] hover:bg-white rounded transition-colors text-center lowercase border border-transparent hover:border-border shadow-sm"
+                            onClick={e => { e.stopPropagation(); navigate(`/workspace/${brand.name.toLowerCase()}/analytics/market`); }}
+                          >
                             рынок
                           </button>
                         </div>
@@ -411,15 +442,21 @@ export default function WorkspaceHubView() {
               <div className="bg-white border border-border rounded-xl shadow-sm p-4">
                 <h2 className="text-[12px] uppercase tracking-wider font-bold text-[#111827] mb-4">топ изменений за неделю</h2>
                 <div className="space-y-2">
-                  {topChanges.map((change, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-[#fbfbfd] border border-border/50 hover:border-border transition-colors">
-                      <div className="text-[13px] font-semibold text-[#111827]">{change.name}</div>
-                      <div className={`flex items-center gap-1 text-[13px] font-bold font-mono ${change.change > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {change.change > 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                        {Math.abs(change.change).toFixed(1)} п.п.
+                  {topChanges.map((change, idx) => {
+                    const brand = brands.find(b => b.name === change.name);
+                    return (
+                      <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-[#fbfbfd] border border-border/50 hover:border-border transition-colors">
+                        <div className="flex items-center gap-2">
+                          {brand && <BrandAvatar project={brand} size={20} className="shrink-0" />}
+                          <div className="text-[13px] font-semibold text-[#111827]">{change.name}</div>
+                        </div>
+                        <div className={`flex items-center gap-1 text-[13px] font-bold font-mono ${change.change > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {change.change > 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                          {Math.abs(change.change).toFixed(1)} п.п.
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -427,20 +464,14 @@ export default function WorkspaceHubView() {
               <div className="bg-white border border-border rounded-xl shadow-sm p-4">
                 <h2 className="text-[12px] uppercase tracking-wider font-bold text-[#111827] mb-4">быстрые действия</h2>
                 <div className="grid grid-cols-3 gap-3 h-[calc(100%-36px)]">
-                  <button 
-                    onClick={handleRunChecks}
-                    disabled={isRunningChecks}
-                    className="flex flex-col items-center justify-center gap-2 p-3 bg-[#fbfbfd] border border-border rounded-lg hover:border-accent hover:text-accent transition-all group disabled:opacity-50"
-                  >
-                    {isRunningChecks ? (
-                      <Loader2 className="w-4 h-4 text-accent animate-spin" />
-                    ) : (
-                      <RefreshCw className="w-4 h-4 text-content-secondary group-hover:text-accent transition-colors" />
-                    )}
-                    <span className="text-[10px] font-bold text-content-secondary group-hover:text-accent text-center lowercase">
-                      {isRunningChecks ? 'выполняется...' : 'запустить проверку'}
-                    </span>
-                  </button>
+                  {/* Scan button — uses real enqueue-scan pipeline */}
+                  <ScanButton
+                    workspaceId={brands[0]?.workspace_id}
+                    configScope="workspace"
+                    label="запустить проверку"
+                    variant="outline"
+                    className="flex flex-col items-center justify-center gap-2 p-3 h-auto bg-[#fbfbfd] border border-border rounded-lg hover:border-accent hover:text-accent text-[10px] font-bold text-content-secondary lowercase"
+                  />
                   <button 
                     onClick={() => setShowCompetitorModal(true)}
                     className="flex flex-col items-center justify-center gap-2 p-3 bg-[#fbfbfd] border border-border rounded-lg hover:border-accent hover:text-accent transition-all group"
@@ -517,7 +548,10 @@ export default function WorkspaceHubView() {
               </div>
               
               <div className="p-3 border-t border-border shrink-0 bg-white">
-                <button className="w-full py-2 text-[12px] text-content-secondary hover:text-[#111827] hover:bg-[#fbfbfd] rounded-lg transition-colors font-bold lowercase">
+                <button
+                  className="w-full py-2 text-[12px] text-content-secondary hover:text-[#111827] hover:bg-[#fbfbfd] rounded-lg transition-colors font-bold lowercase"
+                  onClick={() => navigate('/workspace')}
+                >
                   смотреть все &rarr;
                 </button>
               </div>

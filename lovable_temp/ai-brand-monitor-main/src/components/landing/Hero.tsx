@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n";
+import AILogo from "@/components/AILogo";
 
 export function Hero() {
   const { t, lang } = useI18n();
@@ -85,6 +86,19 @@ export function Hero() {
               <span className="block text-white/50">{t("hero.title2")}</span>
             </h1>
             <p className="mt-6 text-lg text-white/60 max-w-xl">{t("hero.sub")}</p>
+
+            {/* AI models strip */}
+            <div className="mt-8 flex items-center gap-2 flex-wrap">
+              {(["ChatGPT", "Claude", "Gemini", "Perplexity", "Grok"] as const).map((modelName) => (
+                <span
+                  key={modelName}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono-tabular font-medium bg-white/5 border border-white/10 text-white/50"
+                >
+                  <AILogo model={modelName} className="w-3.5 h-3.5 opacity-60" />
+                  {modelName}
+                </span>
+              ))}
+            </div>
           </div>
 
           <div className="mt-14 md:mt-20 rounded-xl bg-graphite-soft/80 border border-white/10 backdrop-blur-sm shadow-2xl shadow-black/40">
@@ -119,6 +133,7 @@ export function Hero() {
                 <div className="mt-6 rise-in">
                   <div className="flex items-center gap-2 text-xs text-white/40 font-mono-tabular mb-3">
                     <span className="w-1.5 h-1.5 rounded-full bg-positive" />
+                    <AILogo model="chatgpt" className="w-3.5 h-3.5 opacity-60" />
                     {t("hero.responseLabel")}
                   </div>
                   <p className="text-white/85 leading-relaxed font-mono-tabular text-[15px]">

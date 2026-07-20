@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useBrands } from '../BrandContext';
 import { supabase } from '@/lib/supabase';
@@ -10,6 +10,9 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SimulatorView } from './SimulatorView';
+import { RescanPromptModal } from '@/components/RescanPromptModal';
+import { useRescanTrigger } from '@/hooks/useRescanTrigger';
+import { useToast } from '@/hooks/use-toast';
 
 // --- Mocks ---
 const MOCK_PLAN = {
@@ -56,6 +59,16 @@ export default function OptimizationView() {
   
   const currentBrand = brands.find(b => b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === slug);
   const projectId = currentBrand?.id;
+
+  // Smart ad-hoc rescan trigger — wired into AIO task completion and fact saves.
+  const {
+    isModalOpen: isRescanOpen,
+    relatedPromptCount,
+    isLaunching: isRescanLaunching,
+    promptRescan,
+    dismiss: dismissRescan,
+    runScan: runRescan,
+  } = useRescanTrigger();
   
   const pathParts = location.pathname.split('/');
   const activeTab = pathParts[pathParts.length - 1] === 'optimization' ? 'plan' : pathParts[pathParts.length - 1];
@@ -90,6 +103,13 @@ export default function OptimizationView() {
   const [editingFactId, setEditingFactId] = useState<number | null>(null);
   const [editingFactValue, setEditingFactValue] = useState('');
   const [editingFactTopic, setEditingFactTopic] = useState('');
+  
+  // Hallucinations search and filters
+  const [halluSearchQuery, setHalluSearchQuery] = useState('');
+  const [halluModelFilterOpen, setHalluModelFilterOpen] = useState(false);
+  const [selectedHalluModelFilter, setSelectedHalluModelFilter] = useState<string | null>(null);
+  const [halluCritFilterOpen, setHalluCritFilterOpen] = useState(false);
+  const [selectedHalluCritFilter, setSelectedHalluCritFilter] = useState<string | null>(null);
 
   // --- Fetch Logic ---
   useEffect(() => {
@@ -187,8 +207,14 @@ export default function OptimizationView() {
         critical: prev.critical.filter(t => t.id !== taskId),
         medium: prev.medium.filter(t => t.id !== taskId)
       }));
-    } catch (err) { 
-      console.warn('Fallback complete task', err); 
+
+      // Smart trigger: brand presence just changed — offer an ad-hoc scan
+      // to verify the change landed in web-connected models.
+      if (projectId) {
+        void promptRescan({ projectId, scope: 'aio_task' });
+      }
+    } catch (err) {
+      console.warn('Fallback complete task', err);
       setPlanTasks(prev => ({
         critical: prev.critical.filter(t => t.id !== taskId),
         medium: prev.medium.filter(t => t.id !== taskId)
@@ -219,6 +245,9 @@ export default function OptimizationView() {
     URL.revokeObjectURL(url);
   };
 
+  const toastApi = typeof useToast === 'function' ? useToast() : { toast: () => 0, dismiss: () => {}, toasts: [] };
+  const { toast } = toastApi;
+
   const handleGoogleDocs = async (brief: any) => {
     const hasGoogle = integrations.some(i => i.provider === 'google_docs' && i.status === 'connected');
     if (!hasGoogle) {
@@ -229,10 +258,10 @@ export default function OptimizationView() {
     }
     try {
       await supabase.functions.invoke('export-to-google-docs', { body: { brief_id: brief.id } });
-      alert('Успешно отправлено в Google Docs!');
+      toast({ title: 'Отправлено в Google Docs', description: 'Документ создан успешно.' });
     } catch (err) { 
       console.warn(err); 
-      alert('Эмуляция: Успешно отправлено в Google Docs!'); 
+      toast({ title: 'Эмуляция Google Docs', description: 'Документ отправлен в локальном режиме.' }); 
     }
   };
 
@@ -245,9 +274,16 @@ export default function OptimizationView() {
       } else {
         throw new Error('No data');
       }
+
+      if (projectId) {
+        void promptRescan({ projectId, scope: 'fact_update' });
+      }
     } catch (err) {
       console.warn('Fallback add fact', err);
       setFacts(prev => [{ id: Date.now(), topic: newFactTopic, value: newFactValue }, ...prev]);
+      if (projectId) {
+        void promptRescan({ projectId, scope: 'fact_update' });
+      }
     }
     setNewFactTopic('');
     setNewFactValue('');
@@ -257,7 +293,12 @@ export default function OptimizationView() {
     try {
       await supabase.from('facts').update({ key: editingFactTopic, value: editingFactValue }).eq('id', id);
       setFacts(prev => prev.map(f => f.id === id ? { ...f, topic: editingFactTopic, value: editingFactValue } : f));
-    } catch (err) { console.warn('Fallback update fact', err); }
+      if (projectId) {
+        void promptRescan({ projectId, scope: 'fact_update' });
+      }
+    } catch (err) {
+      console.warn('Fallback update fact', err);
+    }
     setEditingFactId(null);
   };
 
@@ -305,6 +346,16 @@ export default function OptimizationView() {
       alert('Эмуляция: PR успешно создан!');
     }
   };
+
+  const filteredHallucinations = useMemo(() => {
+    const query = halluSearchQuery.toLowerCase();
+    return hallucinations.filter((item: any) => {
+      const matchesQuery = !query || [item.ai, item.real, item.model].some((value) => String(value).toLowerCase().includes(query));
+      const matchesModel = !selectedHalluModelFilter || item.model === selectedHalluModelFilter;
+      const matchesCrit = !selectedHalluCritFilter || item.crit === selectedHalluCritFilter;
+      return matchesQuery && matchesModel && matchesCrit;
+    });
+  }, [hallucinations, halluSearchQuery, selectedHalluModelFilter, selectedHalluCritFilter]);
 
   return (
     <div className="flex flex-col h-full max-w-7xl mx-auto pb-6">
@@ -583,15 +634,53 @@ export default function OptimizationView() {
             <div className="p-4 border-b border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
               <div className="relative w-full sm:w-64 shrink-0">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-content-tertiary" />
-                <input type="text" placeholder="поиск по тексту..." className="w-full h-9 pl-9 pr-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 focus:ring-accent outline-none lowercase" />
+                <input 
+                  type="text" 
+                  value={halluSearchQuery}
+                  onChange={e => setHalluSearchQuery(e.target.value)}
+                  placeholder="поиск по тексту..." 
+                  className="w-full h-9 pl-9 pr-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 focus:ring-accent outline-none lowercase" 
+                />
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                <button className="h-9 px-3 flex items-center gap-2 bg-[#fbfbfd] border border-border rounded-md text-[13px] font-medium text-content-secondary hover:text-[#111827] lowercase transition-colors">
-                  <Filter className="w-4 h-4" /> модель
-                </button>
-                <button className="h-9 px-3 flex items-center gap-2 bg-[#fbfbfd] border border-border rounded-md text-[13px] font-medium text-content-secondary hover:text-[#111827] lowercase transition-colors">
-                  критичность
-                </button>
+                {/* Model Filter */}
+                <div className="relative">
+                  <button 
+                    onClick={() => setHalluModelFilterOpen(!halluModelFilterOpen)}
+                    className={`h-9 px-3 flex items-center gap-2 rounded-md text-[13px] font-medium lowercase transition-colors ${selectedHalluModelFilter ? 'bg-accent/10 border border-accent text-accent' : 'bg-[#fbfbfd] border border-border text-content-secondary hover:text-[#111827]'}`}
+                  >
+                    <Filter className="w-4 h-4" /> модель
+                  </button>
+                  {halluModelFilterOpen && (
+                    <div className="absolute top-full right-0 mt-1 bg-white border border-border rounded-lg shadow-xl z-50 min-w-[160px] py-1">
+                      <button onClick={() => { setSelectedHalluModelFilter(null); setHalluModelFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">все</button>
+                      {['chatgpt', 'claude', 'gemini', 'perplexity'].map(m => (
+                        <button key={m} onClick={() => { setSelectedHalluModelFilter(m); setHalluModelFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase flex items-center gap-2">
+                          <ModelIcon model={m} size={14} />
+                          {m === 'chatgpt' ? 'ChatGPT' : m.charAt(0).toUpperCase() + m.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Criticality Filter */}
+                <div className="relative">
+                  <button 
+                    onClick={() => setHalluCritFilterOpen(!halluCritFilterOpen)}
+                    className={`h-9 px-3 flex items-center gap-2 rounded-md text-[13px] font-medium lowercase transition-colors ${selectedHalluCritFilter ? 'bg-accent/10 border border-accent text-accent' : 'bg-[#fbfbfd] border border-border text-content-secondary hover:text-[#111827]'}`}
+                  >
+                    критичность
+                  </button>
+                  {halluCritFilterOpen && (
+                    <div className="absolute top-full right-0 mt-1 bg-white border border-border rounded-lg shadow-xl z-50 min-w-[140px] py-1">
+                      <button onClick={() => { setSelectedHalluCritFilter(null); setHalluCritFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">все</button>
+                      <button onClick={() => { setSelectedHalluCritFilter('critical'); setHalluCritFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">critical</button>
+                      <button onClick={() => { setSelectedHalluCritFilter('medium'); setHalluCritFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">medium</button>
+                      <button onClick={() => { setSelectedHalluCritFilter('low'); setHalluCritFilterOpen(false); }} className="w-full px-3 py-2 text-left text-[12px] text-content-secondary hover:bg-[#fbfbfd] lowercase">low</button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -669,6 +758,13 @@ export default function OptimizationView() {
         )}
 
       </div>
+      <RescanPromptModal
+        isOpen={isRescanOpen}
+        relatedPromptCount={relatedPromptCount}
+        isLaunching={isRescanLaunching}
+        onRunScan={runRescan}
+        onDismiss={dismissRescan}
+      />
     </div>
   );
 }
