@@ -271,6 +271,22 @@ export default function OptimizationView() {
     }
   };
 
+  const handleExportLlmsTxt = () => {
+    const header = `# ${currentBrand?.name || 'Brand'} Knowledge Base\n\n> This file is intended for LLM agents and web crawlers.\n\n## Facts\n\n`;
+    const body = facts.map(f => `- **${f.topic || f.title || 'Fact'}**: ${f.value}`).join('\n');
+    const content = header + body;
+    
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'llms.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleAutoPr = async (halluId: any) => {
     const hasGithub = integrations.some(i => i.provider === 'github' && i.status === 'connected');
     if (!hasGithub) {
@@ -482,7 +498,12 @@ export default function OptimizationView() {
           <div className="flex flex-col gap-6 h-full min-h-0">
             {/* Add Fact */}
             <div className="bg-white border border-border rounded-xl shadow-sm p-5 shrink-0">
-              <h2 className="eyebrow mb-4">добавить факт</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="eyebrow">добавить факт</h2>
+                <Button variant="outline" onClick={handleExportLlmsTxt} className="h-8 px-3 text-[12px] font-medium lowercase">
+                  <FileText className="w-3.5 h-3.5 mr-1.5" /> скачать llms.txt
+                </Button>
+              </div>
               <div className="flex flex-col md:flex-row items-start md:items-center gap-3">
                 <input 
                   type="text" 
