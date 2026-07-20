@@ -5,11 +5,12 @@ import { BrandAvatar } from '@/components/ui/BrandAvatar';
 import { 
   LayoutDashboard, Play, BarChart2, Zap, Activity, Grid, Settings, 
   ChevronDown, ChevronRight, Search, HelpCircle, Download, Bell, 
-  ArrowLeft, Loader2
+  ArrowLeft, Loader2, Sparkles, MessageCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
 import { ExportReportModal } from '@/components/workspace/QuickActions';
+import { DataChatWindow } from '@/components/views/DataChatWindow';
 
 export default function BrandDashboardLayout() {
   const { slug } = useParams();
@@ -20,6 +21,7 @@ export default function BrandDashboardLayout() {
   const [isBrandDropdownOpen, setIsBrandDropdownOpen] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   
   // Find current brand or mock it
   const currentBrand = brands.find(b => b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === slug) 
@@ -386,6 +388,25 @@ export default function BrandDashboardLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Floating Action Button for AI Data Chat */}
+      <button 
+        onClick={() => setIsChatOpen(true)}
+        className={`fixed bottom-6 right-6 w-14 h-14 bg-accent text-white rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 hover:bg-accent-hover transition-all flex items-center justify-center z-30 group ${isChatOpen ? 'scale-0 opacity-0' : 'scale-100 opacity-100 duration-300'}`}
+        title="Спроси свои данные (AI Copilot)"
+      >
+        <Sparkles className="w-6 h-6 animate-pulse" />
+        <span className="absolute -top-1 -right-1 flex h-4 w-4">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 border-2 border-white"></span>
+        </span>
+      </button>
+
+      <DataChatWindow 
+        projectId={currentBrand?.id} 
+        isOpen={isChatOpen} 
+        onClose={() => setIsChatOpen(false)} 
+      />
 
       <style dangerouslySetInnerHTML={{__html: `
         .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
