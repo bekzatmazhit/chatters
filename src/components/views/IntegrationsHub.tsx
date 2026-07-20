@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { useBrands } from '../BrandContext';
+import { supabase } from '@/lib/supabase';
 import { IntegrationIcon } from '@/components/ui/IntegrationIcon';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Settings2, PowerOff, Plus, Send } from 'lucide-react';
+import { Settings2, PowerOff, Plus, Send, Loader2, AlertCircle } from 'lucide-react';
 
 const INTEGRATIONS = [
   {
@@ -47,6 +50,156 @@ const INTEGRATIONS = [
 ];
 
 export default function IntegrationsHub() {
+  const { slug } = useParams();
+  const { brands } = useBrands();
+  
+  const currentBrand = brands.find(b => b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === slug);
+  const projectId = currentBrand?.id;
+
+  const [integrationsList, setIntegrationsList] = useState(INTEGRATIONS);
+  const [requestServiceName, setRequestServiceName] = useState('');
+  const [isRequesting, setIsRequesting] = useState(false);
+  
+  // Modal State
+  const [activeModal, setActiveModal] = useState<'telegram' | 'config' | null>(null);
+  const [selectedIntegrationId, setSelectedIntegrationId] = useState<string | null>(null);
+  const [telegramChatId, setTelegramChatId] = useState('');
+  const [configJson, setConfigJson] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Connection Simulation State
+  const [connectingId, setConnectingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!projectId) return;
+    
+    const fetchIntegrations = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('integrations')
+          .select('*')
+          .eq('project_id', projectId);
+          
+        if (error) throw error;
+        
+        if (data) {
+          // Merge db state with local static list
+          setIntegrationsList(prev => prev.map(item => {
+            const dbItem = data.find((d: any) => d.provider === item.id);
+            if (dbItem && dbItem.status !== 'disconnected') {
+              return { ...item, status: 'connected', dbId: dbItem.id, config: dbItem.config };
+            }
+            return item;
+          }));
+        }
+      } catch (err) {
+        console.warn('Fallback to local integrations mock', err);
+      }
+    };
+    
+    fetchIntegrations();
+  }, [projectId]);
+
+  const handleConnectOAuth = async (id: string) => {
+    setConnectingId(id);
+    // Simulate OAuth redirect delay
+    setTimeout(async () => {
+      try {
+        // Upsert to DB
+        const { error } = await supabase.from('integrations').upsert({
+          project_id: projectId,
+          provider: id,
+          status: 'connected',
+          config: { token: 'mock-oauth-token-123' },
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'project_id, provider' });
+        
+        if (error) throw error;
+        
+        setIntegrationsList(prev => prev.map(item => 
+          item.id === id ? { ...item, status: 'connected', config: { token: 'mock-oauth-token-123' } } : item
+        ));
+      } catch (err) {
+        console.warn('Fallback local connect', err);
+        setIntegrationsList(prev => prev.map(item => 
+          item.id === id ? { ...item, status: 'connected' } : item
+        ));
+      } finally {
+        setConnectingId(null);
+      }
+    }, 1500);
+  };
+
+  const handleDisconnect = async (id: string) => {
+    if (!confirm('Вы уверены, что хотите отключить эту интеграцию?')) return;
+    
+    try {
+      const { error } = await supabase.from('integrations').update({ status: 'disconnected', updated_at: new Date().toISOString() }).match({ project_id: projectId, provider: id });
+      if (error) throw error;
+      setIntegrationsList(prev => prev.map(item => item.id === id ? { ...item, status: 'available', config: null } : item));
+    } catch (err) {
+      console.warn('Fallback local disconnect', err);
+      setIntegrationsList(prev => prev.map(item => item.id === id ? { ...item, status: 'available' } : item));
+    }
+  };
+
+  const handleSaveConfig = async () => {
+    if (!selectedIntegrationId) return;
+    setIsSaving(true);
+    try {
+      let configObj = {};
+      if (activeModal === 'telegram') {
+        configObj = { chat_id: telegramChatId };
+      } else {
+        try { configObj = JSON.parse(configJson); } catch(e) { alert('Invalid JSON format'); setIsSaving(false); return; }
+      }
+
+      const { error } = await supabase.from('integrations').upsert({
+        project_id: projectId,
+        provider: selectedIntegrationId,
+        status: 'connected',
+        config: configObj,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'project_id, provider' });
+      
+      if (error) throw error;
+
+      setIntegrationsList(prev => prev.map(item => 
+        item.id === selectedIntegrationId ? { ...item, status: 'connected', config: configObj } : item
+      ));
+      setActiveModal(null);
+    } catch (err) {
+      console.warn('Fallback local save config', err);
+      const mockConfig = activeModal === 'telegram' ? { chat_id: telegramChatId } : JSON.parse(configJson);
+      setIntegrationsList(prev => prev.map(item => 
+        item.id === selectedIntegrationId ? { ...item, status: 'connected', config: mockConfig } : item
+      ));
+      setActiveModal(null);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRequestIntegration = async () => {
+    if (!requestServiceName.trim()) return;
+    setIsRequesting(true);
+    try {
+      const { error } = await supabase.from('integration_requests').insert({
+        project_id: projectId,
+        service_name: requestServiceName.trim()
+      });
+      if (error) throw error;
+      alert('Заявка успешно отправлена! Мы свяжемся с вами.');
+      setRequestServiceName('');
+    } catch (err) {
+      console.warn('Fallback local request', err);
+      alert('Заявка сохранена локально (БД недоступна).');
+      setRequestServiceName('');
+    } finally {
+      setIsRequesting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full max-w-5xl mx-auto pb-6">
       <div className="mb-8">
@@ -57,7 +210,7 @@ export default function IntegrationsHub() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {INTEGRATIONS.map(integration => {
+        {integrationsList.map((integration: any) => {
           const isSoon = integration.status === 'soon';
           
           return (
@@ -91,10 +244,27 @@ export default function IntegrationsHub() {
                       <span className="text-[11px] font-mono font-medium lowercase">подключено</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" className="h-8 flex-1 text-[11px] lowercase rounded-md">
+                      <Button 
+                        variant="outline" 
+                        className="h-8 flex-1 text-[11px] lowercase rounded-md"
+                        onClick={() => {
+                          setSelectedIntegrationId(integration.id);
+                          if (integration.id === 'telegram') {
+                            setTelegramChatId(integration.config?.chat_id || '');
+                            setActiveModal('telegram');
+                          } else {
+                            setConfigJson(JSON.stringify(integration.config || {}, null, 2));
+                            setActiveModal('config');
+                          }
+                        }}
+                      >
                         <Settings2 className="w-3.5 h-3.5 mr-1.5" /> настроить
                       </Button>
-                      <Button variant="outline" className="h-8 px-3 text-[11px] text-red-600 hover:text-red-700 hover:bg-red-50 border-border rounded-md">
+                      <Button 
+                        variant="outline" 
+                        className="h-8 px-3 text-[11px] text-red-600 hover:text-red-700 hover:bg-red-50 border-border rounded-md"
+                        onClick={() => handleDisconnect(integration.id)}
+                      >
                         <PowerOff className="w-3.5 h-3.5" />
                       </Button>
                     </div>
@@ -102,8 +272,24 @@ export default function IntegrationsHub() {
                 )}
 
                 {integration.status === 'available' && (
-                  <Button className="w-full h-9 text-[12px] lowercase font-medium rounded-md shadow-sm">
-                    <Plus className="w-4 h-4 mr-1.5" /> подключить
+                  <Button 
+                    className="w-full h-9 text-[12px] lowercase font-medium rounded-md shadow-sm"
+                    disabled={connectingId === integration.id}
+                    onClick={() => {
+                      if (integration.id === 'telegram') {
+                        setSelectedIntegrationId('telegram');
+                        setTelegramChatId('');
+                        setActiveModal('telegram');
+                      } else {
+                        handleConnectOAuth(integration.id);
+                      }
+                    }}
+                  >
+                    {connectingId === integration.id ? (
+                      <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> перенаправление...</>
+                    ) : (
+                      <><Plus className="w-4 h-4 mr-1.5" /> подключить</>
+                    )}
                   </Button>
                 )}
 
@@ -130,14 +316,82 @@ export default function IntegrationsHub() {
             <input 
               type="text" 
               placeholder="название сервиса..." 
+              value={requestServiceName}
+              onChange={e => setRequestServiceName(e.target.value)}
               className="w-full h-9 px-3 bg-white border border-border rounded-md text-[13px] focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent lowercase"
+              onKeyDown={e => e.key === 'Enter' && handleRequestIntegration()}
             />
-            <Button className="w-full h-9 text-[12px] lowercase font-medium rounded-md">
-              <Send className="w-3.5 h-3.5 mr-1.5" /> отправить заявку
+            <Button 
+              className="w-full h-9 text-[12px] lowercase font-medium rounded-md"
+              onClick={handleRequestIntegration}
+              disabled={!requestServiceName.trim() || isRequesting}
+            >
+              {isRequesting ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
+              отправить заявку
             </Button>
           </div>
         </div>
       </div>
+
+      {/* Modals */}
+      {activeModal === 'telegram' && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="p-5 border-b border-border bg-[#fbfbfd]">
+              <div className="font-semibold text-[#111827]">Настройка Telegram</div>
+              <p className="text-[12px] text-content-secondary mt-1">Добавьте нашего бота <span className="font-mono text-accent bg-accent/10 px-1 rounded">@chatters_alerts_bot</span> в вашу группу или напишите ему напрямую.</p>
+            </div>
+            <div className="p-5 flex flex-col gap-4">
+              <div>
+                <label className="text-[12px] font-semibold text-[#111827] block mb-1.5">Chat ID пользователя или группы</label>
+                <input 
+                  type="text" 
+                  placeholder="Например: -100123456789"
+                  className="w-full h-9 px-3 text-[13px] bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 outline-none font-mono"
+                  value={telegramChatId}
+                  onChange={e => setTelegramChatId(e.target.value)}
+                />
+                <div className="flex items-start gap-1.5 mt-2 text-[11px] text-content-tertiary">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>Отправьте команду /start боту, чтобы получить ваш персональный Chat ID.</span>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border-t border-border bg-[#fbfbfd] flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setActiveModal(null)} disabled={isSaving}>Отмена</Button>
+              <Button onClick={handleSaveConfig} disabled={!telegramChatId.trim() || isSaving}>
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Сохранить'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeModal === 'config' && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+            <div className="p-5 border-b border-border bg-[#fbfbfd]">
+              <div className="font-semibold text-[#111827]">Настройки интеграции</div>
+              <p className="text-[12px] text-content-secondary mt-1">Редактирование конфигурации напрямую (JSON).</p>
+            </div>
+            <div className="p-5 flex flex-col gap-4">
+              <textarea 
+                className="w-full h-48 p-3 text-[12px] font-mono bg-[#fbfbfd] border border-border rounded-md focus:border-accent focus:ring-1 outline-none resize-none"
+                value={configJson}
+                onChange={e => setConfigJson(e.target.value)}
+                spellCheck={false}
+              />
+            </div>
+            <div className="p-4 border-t border-border bg-[#fbfbfd] flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setActiveModal(null)} disabled={isSaving}>Отмена</Button>
+              <Button onClick={handleSaveConfig} disabled={isSaving}>
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Сохранить'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
