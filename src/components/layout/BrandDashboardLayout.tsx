@@ -56,6 +56,7 @@ export default function BrandDashboardLayout() {
       path: 'optimization', 
       icon: Zap,
       subItems: [
+        { name: 'симулятор', path: 'simulator', pro: true },
         { name: 'план', path: 'plan' },
         { name: 'брифы', path: 'briefs' },
         { name: 'база фактов', path: 'facts' },

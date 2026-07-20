@@ -7,8 +7,8 @@ import {
   ListChecks, Wand2, FileText, Download, Share2, Plus, 
   Trash2, Edit2, Search, Filter, AlertTriangle, CheckCircle2,
   GitPullRequest, RefreshCw, X, Save
-} from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { SimulatorView } from './SimulatorView';
 
 // --- Mocks ---
 const MOCK_PLAN = {
@@ -64,6 +64,7 @@ export default function OptimizationView() {
   };
 
   const tabs = [
+    { id: 'simulator', label: 'симулятор' },
     { id: 'plan', label: 'план' },
     { id: 'briefs', label: 'брифы' },
     { id: 'facts', label: 'база фактов' },
@@ -320,6 +321,11 @@ export default function OptimizationView() {
           </div>
         )}
         
+        {/* TAB: SIMULATOR */}
+        {activeTab === 'simulator' && (
+          <SimulatorView projectId={projectId} />
+        )}
+
         {/* TAB: PLAN */}
         {activeTab === 'plan' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full min-h-0">
