@@ -7,6 +7,7 @@ import {
   ListChecks, Wand2, FileText, Download, Share2, Plus, 
   Trash2, Edit2, Search, Filter, AlertTriangle, CheckCircle2,
   GitPullRequest, RefreshCw, X, Save
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SimulatorView } from './SimulatorView';
 

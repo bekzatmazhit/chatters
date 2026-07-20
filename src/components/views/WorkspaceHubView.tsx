@@ -284,16 +284,16 @@ export default function WorkspaceHubView() {
               </div>
               
               <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" style={{ gridAutoRows: 'minmax(220px, auto)' }}>
                   {filteredBrands.map((brand, idx) => {
                     const color = brand.color || `hsl(${idx * 60}, 70%, 50%)`;
                     return (
                       <div 
                         key={brand.id}
-                        className="bg-[#fbfbfd] border border-border rounded-lg p-4 hover:border-accent/50 cursor-pointer transition-colors group flex flex-col"
+                        className="bg-[#fbfbfd] border border-border rounded-lg p-4 hover:border-accent/50 cursor-pointer transition-colors group flex flex-col min-h-[220px] shrink-0 select-none"
                         onClick={() => navigate(`/workspace/${brand.name.toLowerCase()}/overview`)}
                       >
-                        <div className="flex items-center gap-3 mb-4">
+                        <div className="flex items-center gap-3 mb-4 shrink-0">
                           <BrandAvatar project={brand} size={40} />
                           <div>
                             <div className="font-bold text-[#111827] group-hover:text-accent transition-colors text-[15px]">{brand.name}</div>
@@ -305,7 +305,7 @@ export default function WorkspaceHubView() {
                           </div>
                         </div>
 
-                        <div className="space-y-3 mb-4 flex-1">
+                        <div className="space-y-3 mb-4 flex-1 min-h-0 flex flex-col justify-center">
                           <div>
                             <div className="flex justify-between text-[12px] mb-1.5 lowercase text-content-secondary">
                               <span>sov (доля голоса)</span>
@@ -321,7 +321,7 @@ export default function WorkspaceHubView() {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 pt-3 border-t border-border">
+                        <div className="flex items-center gap-2 pt-3 border-t border-border shrink-0">
                           <button className="flex-1 py-1.5 text-[12px] font-semibold text-content-secondary hover:text-[#111827] hover:bg-white rounded transition-colors text-center lowercase border border-transparent hover:border-border shadow-sm">
                             прогоны
                           </button>
@@ -335,7 +335,7 @@ export default function WorkspaceHubView() {
 
                   {/* New Brand Card */}
                   <button 
-                    className="bg-transparent border-2 border-dashed border-border rounded-lg p-4 flex flex-col items-center justify-center text-content-muted hover:text-accent hover:border-accent/50 hover:bg-accent/5 transition-colors min-h-[220px]"
+                    className="bg-transparent border-2 border-dashed border-border rounded-lg p-4 flex flex-col items-center justify-center text-content-muted hover:text-accent hover:border-accent/50 hover:bg-accent/5 transition-colors min-h-[220px] shrink-0 outline-none"
                     onClick={() => setShowOnboarding(true)}
                   >
                     <div className="w-10 h-10 rounded-full bg-surface border border-border flex items-center justify-center mb-3">
