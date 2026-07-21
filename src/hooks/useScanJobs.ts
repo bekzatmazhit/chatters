@@ -65,6 +65,38 @@ export function useScanJobs(projectId?: string) {
       setError(null);
       setIsScanning(true);
 
+      // MOCK MODE: Always simulate jobs per user request
+      const MOCK_MODE = true;
+      if (MOCK_MODE) {
+        const mockJobIds = ['mock-job-1', 'mock-job-2', 'mock-job-3', 'mock-job-4'];
+        
+        const initialJobs: ScanJobStatus[] = mockJobIds.map((id, index) => ({
+          id,
+          status: 'queued' as const,
+          ai_model: ['chatgpt', 'claude', 'gemini', 'perplexity'][index],
+          created_at: new Date().toISOString(),
+        }));
+        
+        setJobs(initialJobs);
+        
+        // Simulate progress
+        mockJobIds.forEach((id, index) => {
+          setTimeout(() => {
+            setJobs(prev => prev.map(j => j.id === id ? { ...j, status: 'running' } : j));
+            setTimeout(() => {
+              setJobs(prev => prev.map(j => j.id === id ? { ...j, status: 'done', finished_at: new Date().toISOString() } : j));
+            }, 1500 + Math.random() * 1500);
+          }, 500 + index * 800);
+        });
+        
+        return {
+          job_ids: mockJobIds,
+          queued: mockJobIds.length,
+          skipped: 0,
+        };
+      }
+
+      // Live mode (currently unreachable due to MOCK_MODE = true)
       const { data, error: invokeError } = await supabase.functions.invoke('enqueue-scan', {
         body: {
           project_id: options?.project_id || projectId,
@@ -85,7 +117,6 @@ export function useScanJobs(projectId?: string) {
         throw new Error(data?.message || 'No jobs created');
       }
 
-      // Initialize jobs array
       const initialJobs: ScanJobStatus[] = data.job_ids.map((id: string) => ({
         id,
         status: 'queued' as const,
