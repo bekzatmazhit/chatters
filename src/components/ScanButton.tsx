@@ -69,11 +69,20 @@ export function ScanButton({
     } catch (err) {
       console.error('Failed to start scan:', err);
       
-      toast({
-        title: 'Ошибка запуска',
-        description: err instanceof Error ? err.message : 'Не удалось запустить проверку',
-        variant: 'destructive',
-      });
+      const errorMessage = err instanceof Error ? err.message : 'Не удалось запустить проверку';
+      
+      if (errorMessage.toLowerCase().includes('no jobs') || errorMessage.includes('No jobs')) {
+        toast({
+          title: 'Нет данных для проверки',
+          description: 'Добавьте поисковые запросы или включите AI-модели в настройках проекта.',
+        });
+      } else {
+        toast({
+          title: 'Ошибка запуска',
+          description: errorMessage,
+          variant: 'destructive',
+        });
+      }
     }
   };
 

@@ -133,30 +133,28 @@ export function LandingNavbar() {
 
           <div className="flex items-center gap-2 sm:gap-3">
             {isAuthenticated ? (
-              <button onClick={() => setIsAccountModalOpen(true)}>
-                <Button
-                  className={cn(
-                    'btn-label h-9 rounded-full px-4 lowercase',
-                    isLight ? 'bg-[#111827] text-white hover:bg-black' : 'bg-white text-[#0b0d12] hover:bg-white/90',
-                  )}
-                >
-                  К проектам
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </button>
+              <Button
+                onClick={() => setIsAccountModalOpen(true)}
+                className={cn(
+                  'btn-label h-9 rounded-full px-4 lowercase',
+                  isLight ? 'bg-[#111827] text-white hover:bg-black' : 'bg-white text-[#0b0d12] hover:bg-white/90',
+                )}
+              >
+                К проектам
+                <ArrowRight className="h-4 w-4" />
+              </Button>
             ) : (
               <>
-                <button onClick={() => setIsAccountModalOpen(true)}>
-                  <Button
-                    variant="ghost"
-                    className={cn(
-                      'btn-label hidden h-9 rounded-full px-3 sm:inline-flex lowercase',
-                      isLight ? 'text-black/60 hover:bg-black/5 hover:text-black' : 'text-white/60 hover:bg-white/10 hover:text-white',
-                    )}
-                  >
-                    Войти
-                  </Button>
-                </button>
+                <Button
+                  onClick={() => setIsAccountModalOpen(true)}
+                  variant="ghost"
+                  className={cn(
+                    'btn-label hidden h-9 rounded-full px-3 sm:inline-flex lowercase',
+                    isLight ? 'text-black/60 hover:bg-black/5 hover:text-black' : 'text-white/60 hover:bg-white/10 hover:text-white',
+                  )}
+                >
+                  Войти
+                </Button>
                 <Link to="/signup">
                   <Button
                     className={cn(
