@@ -63,12 +63,13 @@ export function DemoQueryTerminal() {
   }, [step, isTypingDone, prefersReducedMotion]);
 
   return (
-    <div className="relative w-full rounded-lg border border-white/12 bg-[#11141a]/95 backdrop-blur-md text-left shadow-[0_28px_90px_rgba(0,0,0,0.32)]">
-      <div className="flex h-11 items-center justify-between border-b border-white/10 px-4">
-        <div className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-white/18" />
-          <span className="h-2.5 w-2.5 rounded-full bg-white/18" />
-          <span className="h-2.5 w-2.5 rounded-full bg-white/18" />
+    <div className="relative w-full rounded-xl border border-white/10 bg-[#0b0d12]/80 backdrop-blur-2xl text-left shadow-[0_0_80px_rgba(109,95,232,0.15)] overflow-hidden">
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+      <div className="flex h-11 items-center justify-between border-b border-white/10 px-4 bg-white/[0.02]">
+        <div className="flex items-center gap-2">
+          <span className="h-3 w-3 rounded-full bg-[#FF5F56] border border-[#E0443E]/50" />
+          <span className="h-3 w-3 rounded-full bg-[#FFBD2E] border border-[#DEA123]/50" />
+          <span className="h-3 w-3 rounded-full bg-[#27C93F] border border-[#1AAB29]/50" />
         </div>
         <span className="font-mono text-[11px] tracking-[0.08em] text-[#8f98ad]">live-query</span>
       </div>
@@ -130,9 +131,12 @@ export function DemoQueryTerminal() {
                 найдено упоминание
               </div>
 
-              <p className="rounded-md border border-white/10 bg-white/[0.055] p-4 text-[14px] leading-7 text-[#dce3f1]">
+              <p className="rounded-md border border-white/10 bg-white/[0.03] p-4 text-[14px] leading-7 text-[#dce3f1] shadow-inner">
                 В ответах по этому запросу чаще всего рекомендуют{' '}
-                <span className="rounded bg-accent/18 px-1.5 py-0.5 font-medium text-white">chatters</span>
+                <span className="rounded bg-accent/20 px-2 py-0.5 font-bold text-white border border-accent/40 shadow-[0_0_15px_rgba(109,95,232,0.4)] relative overflow-hidden inline-block group">
+                  <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"></span>
+                  chatters
+                </span>
                 . Модели связывают бренд с мониторингом AI-видимости, сравнением конкурентов
                 и отчетами по источникам.
               </p>

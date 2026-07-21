@@ -142,7 +142,7 @@ export default function LandingView() {
                   мониторинг видимости бренда в AI-ответах
                 </SectionLabel>
                 <h1 className="max-w-3xl text-[42px] font-semibold leading-[1.04] tracking-tight text-white md:text-[68px]">
-                  Узнайте, как AI выбирает ваш бренд.
+                  Узнайте, как <span className="bg-gradient-to-r from-accent-light via-white to-accent-light bg-clip-text text-transparent drop-shadow-sm">AI выбирает</span> ваш бренд.
                 </h1>
                 <p className="mt-7 max-w-2xl text-[17px] leading-8 text-[rgba(255,255,255,0.72)] md:text-[19px]">
                   Chatters показывает, где вас рекомендуют ChatGPT, Claude, Gemini и Perplexity,
@@ -151,31 +151,35 @@ export default function LandingView() {
 
                 <div className="mt-9 flex flex-col gap-3 sm:flex-row">
                   <Link to="/hub">
-                    <Button size="lg" className="btn-label h-12 rounded-md bg-white px-6 text-[#0b0d12] hover:bg-white/90">
+                    <Button size="lg" className="btn-label h-12 rounded-md bg-white px-7 text-[#0b0d12] hover:bg-[#fbfbfd] shadow-[0_0_20px_rgba(255,255,255,0.15)] hover:shadow-[0_0_30px_rgba(255,255,255,0.3)] transition-all group border border-transparent hover:border-white/50">
                       Запустить проверку
-                      <ArrowRight className="h-4 w-4" />
+                      <ArrowRight className="h-4 w-4 ml-1 transition-transform group-hover:translate-x-1" />
                     </Button>
                   </Link>
                   <a href="#product">
                     <Button
                       size="lg"
                       variant="secondary"
-                      className="btn-label h-12 rounded-md border-white/14 bg-white/[0.04] px-6 text-white hover:bg-white/[0.08]"
+                      className="btn-label h-12 rounded-md border-white/10 bg-white/[0.03] px-7 text-white hover:bg-white/[0.08] hover:border-white/20 transition-all"
                     >
                       Посмотреть дашборд
                     </Button>
                   </a>
                 </div>
 
-                <div className="mt-10 grid max-w-xl grid-cols-3 gap-5 border-t border-white/10 pt-7">
+                <div className="mt-12 grid max-w-xl grid-cols-3 gap-5 border-t border-white/10 pt-8 relative">
+                  <div className="absolute top-0 left-1/4 w-1/2 h-[1px] bg-gradient-to-r from-transparent via-accent/50 to-transparent"></div>
                   {[
                     ['4', 'AI-модели'],
                     ['340', 'запросов в демо'],
                     ['24ч', 'до первого отчета'],
-                  ].map(([value, label]) => (
-                    <div key={label}>
-                      <div className="font-mono text-[24px] text-white">{value}</div>
-                      <div className="mt-1 text-[12px] leading-4 text-[rgba(255,255,255,0.72)]">{label}</div>
+                  ].map(([value, label], idx) => (
+                    <div key={label} className={idx !== 0 ? 'pl-5 border-l border-white/5' : ''}>
+                      <div className="font-mono text-[28px] text-white flex items-baseline gap-1">
+                        {value}
+                        {idx === 0 && <span className="text-accent-light text-[18px]">+</span>}
+                      </div>
+                      <div className="mt-1.5 text-[12px] uppercase tracking-wider font-semibold text-[rgba(255,255,255,0.5)]">{label}</div>
                     </div>
                   ))}
                 </div>
