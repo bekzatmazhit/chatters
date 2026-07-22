@@ -82,7 +82,7 @@ export default function AnalyticsView() {
   const [isLoading, setIsLoading] = useState(false);
   const [modelsData, setModelsData] = useState<any[]>(MODELS_DATA);
   const [sourcesData, setSourcesData] = useState<any[]>(SOURCES_DATA);
-  const [promptsData, setPromptsData] = useState<any[]>(PROMPTS_DATA);
+  const [promptsData, setPromptsData] = useState<any[]>([]); // Start empty instead of PROMPTS_DATA
   const [compareData, setCompareData] = useState<any[]>(COMPARE_DATA);
   const [compareSovData, setCompareSovData] = useState<any[]>(COMPARE_SOV_DATA);
   const [marketData, setMarketData] = useState<any[]>(MARKET_DATA);
@@ -110,6 +110,29 @@ export default function AnalyticsView() {
   const [newPersona, setNewPersona] = useState({ name: '', role: '', city: '', language: 'ru', context_notes: '', icon_emoji: '👤' });
   const [selectedPersonasForPrompt, setSelectedPersonasForPrompt] = useState<string[]>([]);
 
+  const fetchPromptsData = async () => {
+    if (!projectId) return;
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase.from('tracked_prompts').select('*').eq('project_id', projectId).order('created_at', { ascending: false });
+      if (error) throw error;
+      if (data) {
+        setPromptsData(data.map(d => ({
+          id: d.id, text: d.prompt_text, models: d.ai_models || [], freq: 0,
+          lastFound: true, active: d.is_active,
+          frequency: (d.frequency as Frequency) ?? 'weekly',
+          last_scanned_at: d.last_scanned_at,
+          next_scan_at: d.next_scan_at,
+          runForPersonas: d.run_for_personas || [],
+        })));
+      }
+    } catch (err) {
+      console.warn('Fallback: DB table error for Prompts', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Fetch Logic depending on active tab
   useEffect(() => {
     if (!projectId) return;
@@ -129,16 +152,7 @@ export default function AnalyticsView() {
             })));
           }
         } else if (activeTab === 'prompts') {
-          const { data, error } = await supabase.from('tracked_prompts').select('*').eq('project_id', projectId).order('created_at', { ascending: false });
-          if (data && data.length > 0) {
-            setPromptsData(data.map(d => ({
-              id: d.id, text: d.prompt_text, models: d.ai_models || [], freq: 0,
-              lastFound: true, active: d.is_active,
-              frequency: (d.frequency as Frequency) ?? 'weekly',
-              last_scanned_at: d.last_scanned_at,
-              next_scan_at: d.next_scan_at,
-            })));
-          }
+          await fetchPromptsData();
         } else if (activeTab === 'compare') {
           // Fetch runs and aggregate
           // Let's just fallback to mock for now if no real data
@@ -148,7 +162,9 @@ export default function AnalyticsView() {
       } catch (err) {
         console.warn('Fallback: DB table error for Analytics', err);
       } finally {
-        setIsLoading(false);
+        if (activeTab !== 'prompts') {
+          setIsLoading(false);
+        }
       }
     };
     fetchData();
@@ -176,10 +192,10 @@ export default function AnalyticsView() {
   // Prompt Handlers
   const handleSavePrompt = async () => {
     if (!newPromptText.trim()) return;
-    // New prompts default to 'weekly' (a safe default across all tiers);
-    // next_scan_at is computed once so the scheduler can pick it up.
     const defaultFrequency: Frequency = 'weekly';
     const defaultNextScanAt = computeNextScanAt(defaultFrequency);
+    
+    setIsLoading(true);
     try {
       if (isBulkMode) {
         const lines = newPromptText.split('\n').map(line => line.trim()).filter(Boolean);
@@ -191,9 +207,10 @@ export default function AnalyticsView() {
           frequency: defaultFrequency,
           next_scan_at: defaultNextScanAt,
         }));
-        await supabase.from('tracked_prompts').insert(inserts);
+        const { error } = await supabase.from('tracked_prompts').insert(inserts);
+        if (error) throw error;
       } else {
-        await supabase.from('tracked_prompts').insert({
+        const { error } = await supabase.from('tracked_prompts').insert({
           project_id: projectId,
           prompt_text: newPromptText,
           ai_models: newPromptModels,
@@ -201,39 +218,42 @@ export default function AnalyticsView() {
           frequency: defaultFrequency,
           next_scan_at: defaultNextScanAt,
         });
+        if (error) throw error;
       }
       setIsAddPromptModalOpen(false);
       setNewPromptText('');
-      // Optimistic update omitted for brevity, reload tab
-      handleTabChange('prompts');
+      await fetchPromptsData();
     } catch (err) {
       console.warn('Fallback add prompt', err);
       setIsAddPromptModalOpen(false);
+      setIsLoading(false);
     }
   };
 
   // Update a prompt's per-prompt scan frequency, persisting + recomputing next_scan_at.
-  // Tier gating is enforced inside <PromptFrequencySelect>, so by the time we
-  // get here the value is allowed for the current tier.
   const handleChangeFrequency = async (promptId: any, next: Frequency) => {
     const nextScanAt = computeNextScanAt(next);
-    setPromptsData(prev => prev.map(p => p.id === promptId
-      ? { ...p, frequency: next, next_scan_at: nextScanAt }
-      : p));
+    // Optimistic update
+    setPromptsData(prev => prev.map(p => p.id === promptId ? { ...p, frequency: next, next_scan_at: nextScanAt } : p));
     try {
-      await supabase
-        .from('tracked_prompts')
-        .update({ frequency: next, next_scan_at: nextScanAt })
-        .eq('id', promptId);
+      const { error } = await supabase.from('tracked_prompts').update({ frequency: next, next_scan_at: nextScanAt }).eq('id', promptId);
+      if (error) {
+        console.warn('Failed to update frequency in db', error);
+        // revert logic could go here
+      }
     } catch (err) {
       console.warn('Update prompt frequency fallback', err);
     }
   };
 
   const togglePromptStatus = async (id: any, currentStatus: boolean) => {
+    // Optimistic update
     setPromptsData(prev => prev.map(p => p.id === id ? { ...p, active: !currentStatus } : p));
     try {
-      await supabase.from('tracked_prompts').update({ is_active: !currentStatus }).eq('id', id);
+      const { error } = await supabase.from('tracked_prompts').update({ is_active: !currentStatus }).eq('id', id);
+      if (error) {
+        console.warn('Failed to toggle prompt in db', error);
+      }
     } catch (err) {
       console.warn('Toggle prompt fallback', err);
     }
@@ -241,9 +261,13 @@ export default function AnalyticsView() {
 
   const deletePrompt = async (id: any) => {
     if (!confirm('Удалить промпт?')) return;
+    // Optimistic update
     setPromptsData(prev => prev.filter(p => p.id !== id));
     try {
-      await supabase.from('tracked_prompts').delete().eq('id', id);
+      const { error } = await supabase.from('tracked_prompts').delete().eq('id', id);
+      if (error) {
+        console.warn('Failed to delete prompt in db', error);
+      }
     } catch (err) {
       console.warn('Delete prompt fallback', err);
     }
