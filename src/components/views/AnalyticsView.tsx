@@ -9,7 +9,7 @@ import {
 } from 'recharts';
 import { 
   TrendingUp, TrendingDown, ExternalLink, ShieldCheck, FileText, 
-  Plus, Search, Filter, CheckCircle2, XCircle, MoreVertical, RefreshCw
+  Plus, Search, Filter, CheckCircle2, XCircle, MoreVertical, RefreshCw, Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PromptFrequencySelect } from '@/components/PromptFrequencySelect';
@@ -133,6 +133,27 @@ export default function AnalyticsView() {
     }
   };
 
+  const fetchPersonasData = async () => {
+    if (!projectId) return;
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase.from('personas').select('*').eq('project_id', projectId).order('created_at', { ascending: false });
+      if (error) throw error;
+      if (data) {
+        setPersonas(data.map(d => ({
+          ...d,
+          sov: 0, 
+          mentions: 0,
+          sentiment: 0
+        })));
+      }
+    } catch (err) {
+      console.warn('Fallback: DB table error for Personas', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Fetch Logic depending on active tab
   useEffect(() => {
     if (!projectId) return;
@@ -153,6 +174,8 @@ export default function AnalyticsView() {
           }
         } else if (activeTab === 'prompts') {
           await fetchPromptsData();
+        } else if (activeTab === 'personas') {
+          await fetchPersonasData();
         } else if (activeTab === 'compare') {
           // Fetch runs and aggregate
           // Let's just fallback to mock for now if no real data
@@ -637,6 +660,12 @@ export default function AnalyticsView() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
+                        <button
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors mr-2 ${p.is_active ? 'bg-accent' : 'bg-content-tertiary'}`}
+                          onClick={() => togglePersonaStatus(p.id, p.is_active)}
+                        >
+                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${p.is_active ? 'translate-x-4' : 'translate-x-1'}`} />
+                        </button>
                         <button 
                           className="text-content-tertiary hover:text-accent transition-colors" 
                           title="Редактировать"
@@ -647,6 +676,13 @@ export default function AnalyticsView() {
                           }}
                         >
                           <MoreVertical className="w-4 h-4" />
+                        </button>
+                        <button 
+                          className="text-content-tertiary hover:text-red-500 transition-colors" 
+                          title="Удалить"
+                          onClick={() => deletePersona(p.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -1019,14 +1055,7 @@ export default function AnalyticsView() {
             </div>
             <div className="p-4 border-t border-border bg-[#fbfbfd] flex justify-end gap-3">
               <Button variant="outline" onClick={() => setIsPersonaModalOpen(false)}>Отмена</Button>
-              <Button onClick={() => {
-                if (editingPersonaId) {
-                  setPersonas(prev => prev.map(p => p.id === editingPersonaId ? { ...p, ...newPersona } : p));
-                } else {
-                  setPersonas(prev => [{ id: Date.now().toString(), ...newPersona, is_active: true, sov: 0, mentions: 0, sentiment: 0 }, ...prev]);
-                }
-                setIsPersonaModalOpen(false);
-              }}>Сохранить</Button>
+              <Button onClick={handleSavePersona}>Сохранить</Button>
             </div>
           </div>
         </div>
